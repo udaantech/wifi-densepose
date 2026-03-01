@@ -19,7 +19,7 @@ export class PoseDetectionCanvas {
       autoResize: true,
       enableStats: true,
       enableControls: true,
-      zoneId: 'room_1',
+      zoneId: 'living_room',
       updateInterval: 50, // ms
       ...options
     };
@@ -1367,7 +1367,7 @@ export class PoseDetectionCanvas {
       // Get current renderer config
       ...(this.renderer ? this.renderer.getConfig() : {}),
       // Add other relevant settings
-      currentZone: this.config.zoneId || 'room_1',
+      currentZone: this.config.zoneId || 'living_room',
       maxFps: 30,
       autoReconnect: true,
       connectionTimeout: 10000

@@ -275,12 +275,18 @@ export class CalibrationTab {
       ['Phase Stability', `${((nf.phase_stability || 0) * 100).toFixed(1)}%`],
     ]);
 
-    // Card 2: Zone Mapping
+    // Card 2: Discovered Rooms
     const zs = results.zone_signatures || {};
-    const zoneRows = Object.entries(zs).map(([zid, z]) =>
-      [zid, `centroid=${z.feature_centroid}, spread=${z.feature_spread}`]
-    );
-    grid.innerHTML += this._resultCard('Zone Mapping', zoneRows.length ? zoneRows : [['Status', 'No zones configured']]);
+    const zoneRows = Object.entries(zs).map(([zid, z]) => {
+      const name = z.zone_name || zid;
+      const area = z.area_m2 ? ` (${z.area_m2.toFixed(0)}m\u00B2)` : '';
+      const loss = z.path_loss_db !== undefined ? `, ${z.path_loss_db.toFixed(1)}dB` : '';
+      return [
+        `${name}${area}`,
+        `centroid=${z.feature_centroid}${loss}`
+      ];
+    });
+    grid.innerHTML += this._resultCard('Discovered Rooms', zoneRows.length ? zoneRows : [['Status', 'No rooms detected']]);
 
     // Card 3: Detection Thresholds
     const dt = results.detection_thresholds || {};
@@ -316,7 +322,7 @@ export class CalibrationTab {
     const map = {
       idle: 'Idle',
       environment_baseline: 'Phase 1: Collecting Baseline...',
-      zone_mapping: 'Phase 2: Mapping Zones...',
+      zone_mapping: 'Phase 2: Discovering Rooms...',
       presence_calibration: 'Phase 3: Presence Calibration...',
       validation: 'Phase 4: Validating...',
       completed: 'Calibration Complete',

@@ -23,6 +23,7 @@ import numpy as np
 from src.config.domains import DomainConfig, ZoneConfig, ZoneType
 from src.config.settings import Settings
 from src.core.csi_processor import CSIFeatures, CSIProcessor, HumanDetectionResult
+from src.core.room_discovery import RoomDiscoveryEngine
 from src.hardware.csi_extractor import CSIData
 from src.testing.mock_csi_generator import MockCSIGenerator
 
@@ -206,71 +207,85 @@ class CalibrationEngine:
             "per_subcarrier": per_subcarrier,
         }
 
-    # Room templates discovered during calibration
-    _ROOM_TEMPLATES = [
-        {"zone_id": "room_1", "name": "Room 1", "x": 5.0, "y": 4.0, "z": 3.0},
-        {"zone_id": "room_2", "name": "Room 2", "x": 4.0, "y": 3.5, "z": 3.0},
-        {"zone_id": "room_3", "name": "Room 3", "x": 3.0, "y": 3.0, "z": 3.0},
-    ]
+    # Map room names to ZoneType enum values
+    _ZONE_TYPE_MAP = {
+        "Living Room": ZoneType.LIVING_ROOM,
+        "Bedroom": ZoneType.BEDROOM,
+        "Kitchen": ZoneType.KITCHEN,
+        "Bathroom": ZoneType.BATHROOM,
+        "Hallway": ZoneType.HALLWAY,
+    }
 
     async def _phase2_zone_mapping(self, baseline: Dict[str, Any]) -> Dict[str, Any]:
-        """Discover zones and collect per-zone CSI signatures."""
-        # Clear any previously configured zones and create fresh ones
+        """Auto-detect rooms by scanning WiFi CSI signal patterns."""
         self.domain_config.zones.clear()
 
-        for tmpl in self._ROOM_TEMPLATES:
+        # Discover rooms via CSI fingerprinting
+        discovery = RoomDiscoveryEngine(seed=42)
+        fingerprints = discovery.scan_and_discover(
+            csi_generator=self._generator,
+            baseline=baseline,
+            progress_callback=lambda frac: self._update_phase_progress(2, frac * 0.6),
+        )
+
+        # Register discovered rooms as zones
+        zones_result: Dict[str, Dict[str, Any]] = {}
+        n_frames_per_zone = 10
+
+        for zi, fp in enumerate(fingerprints):
             zone = ZoneConfig(
-                zone_id=tmpl["zone_id"],
-                name=tmpl["name"],
-                zone_type=ZoneType.ROOM,
-                description=f"Calibrated zone ({tmpl['x']:.0f}x{tmpl['y']:.0f}x{tmpl['z']:.0f}m)",
-                x_max=tmpl["x"],
-                y_max=tmpl["y"],
-                z_max=tmpl["z"],
+                zone_id=fp.zone_id,
+                name=fp.room_type,
+                zone_type=self._ZONE_TYPE_MAP.get(fp.room_type, ZoneType.ROOM),
+                description=f"Auto-detected {fp.room_type} ({fp.area_m2:.0f}m²)",
+                x_max=fp.dimensions[0],
+                y_max=fp.dimensions[1],
+                z_max=fp.dimensions[2],
+                calibration_data=fp.to_dict(),
             )
             self.domain_config.add_zone(zone)
 
-        zones = list(self.domain_config.zones.values())
-        n_frames_per_zone = 10
-        zones_result: Dict[str, Dict[str, Any]] = {}
-
-        for zi, zone in enumerate(zones):
-            zone_cfg = {
-                "x_range": zone.x_max - zone.x_min,
-                "y_range": zone.y_max - zone.y_min,
-                "z_range": zone.z_max - zone.z_min,
-                "noise_multiplier": 0.08 + 0.04 * (zi % 3),
-            }
-
+            # Collect per-zone CSI signatures for threshold tuning
             amps: List[float] = []
-
             for fi in range(n_frames_per_zone):
-                csi_complex = self._generator.generate_calibration_frame(
-                    scenario="zone", zone_config=zone_cfg
-                )
+                csi_complex = self._generator.generate_room_frame({
+                    "amplitude_scale": fp.amplitude_mean / max(baseline.get("amplitude_mean", 1.0), 1e-6),
+                    "noise_multiplier": 0.06 + 0.02 * zi,
+                    "movement_amplitude": fp.multipath_score,
+                    "phase_offset": zi * 0.7,
+                })
                 amp, _ = self._decompose(csi_complex)
                 amps.append(float(np.mean(amp)))
 
-                zone_progress = (zi * n_frames_per_zone + fi + 1) / (
-                    len(zones) * n_frames_per_zone
+                progress = 0.6 + 0.4 * (zi * n_frames_per_zone + fi + 1) / (
+                    len(fingerprints) * n_frames_per_zone
                 )
-                self._update_phase_progress(2, zone_progress)
-                await asyncio.sleep(0.05)
+                self._update_phase_progress(2, progress)
+                await asyncio.sleep(0.03)
 
             centroid = float(np.mean(amps))
             spread = float(np.std(amps))
-            deviation_from_baseline = abs(centroid - baseline.get("amplitude_mean", 0))
+            deviation = abs(centroid - baseline.get("amplitude_mean", 0))
 
-            zones_result[zone.zone_id] = {
-                "zone_name": zone.name,
+            zones_result[fp.zone_id] = {
+                "zone_name": fp.room_type,
                 "feature_centroid": round(centroid, 6),
                 "feature_spread": round(spread, 6),
-                "deviation_from_baseline": round(deviation_from_baseline, 6),
+                "deviation_from_baseline": round(deviation, 6),
                 "frames_collected": n_frames_per_zone,
-                "dimensions": f"{zone_cfg['x_range']:.0f}x{zone_cfg['y_range']:.0f}x{zone_cfg['z_range']:.0f}m",
+                "dimensions": f"{fp.dimensions[0]:.0f}x{fp.dimensions[1]:.0f}x{fp.dimensions[2]:.0f}m",
+                "area_m2": fp.area_m2,
+                "path_loss_db": fp.path_loss_db,
+                "multipath_score": fp.multipath_score,
+                "antenna_correlation": fp.antenna_correlation,
+                "fingerprint": fp.to_dict(),
             }
 
-        logger.info("Discovered %d zones: %s", len(zones_result), list(zones_result.keys()))
+        logger.info(
+            "Auto-detected %d rooms: %s",
+            len(zones_result),
+            [v["zone_name"] for v in zones_result.values()],
+        )
         return {"zones": zones_result, "total_zones": len(zones_result)}
 
     async def _phase3_presence_calibration(

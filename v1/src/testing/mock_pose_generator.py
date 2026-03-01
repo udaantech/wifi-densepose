@@ -280,7 +280,7 @@ def generate_mock_zones_summary(
     """
     _show_banner()
 
-    zones = zone_ids or ["room_1", "room_2", "room_3"]
+    zones = zone_ids or ["living_room", "bedroom", "kitchen", "bathroom", "hallway"]
     zone_data = {}
     total_persons = 0
     active_zones = 0
@@ -324,7 +324,7 @@ def generate_mock_historical_data(
     """
     _show_banner()
 
-    zones = zone_ids or ["room_1", "room_2", "room_3"]
+    zones = zone_ids or ["living_room", "bedroom", "kitchen", "bathroom", "hallway"]
     current_time = start_time
     aggregated_data = []
     raw_data = [] if include_raw_data else None
@@ -384,7 +384,7 @@ def generate_mock_recent_activities(
         activity = {
             "activity_id": f"activity_{i}",
             "person_id": f"person_{random.randint(1, 5)}",
-            "zone_id": zone_id or random.choice(["room_1", "room_2", "room_3"]),
+            "zone_id": zone_id or random.choice(["living_room", "bedroom", "kitchen", "bathroom", "hallway"]),
             "activity": random.choice(["standing", "sitting", "walking", "lying"]),
             "confidence": random.uniform(0.6, 0.95),
             "timestamp": datetime.now() - timedelta(minutes=random.randint(0, 60)),
@@ -421,7 +421,7 @@ def generate_mock_statistics(
         "average_confidence": random.uniform(0.75, 0.90),
         "average_processing_time_ms": random.uniform(50, 200),
         "unique_persons": random.randint(5, 20),
-        "most_active_zone": random.choice(["room_1", "room_2", "room_3"]),
+        "most_active_zone": random.choice(["living_room", "bedroom", "kitchen", "bathroom", "hallway"]),
         "activity_distribution": {
             "standing": random.uniform(0.3, 0.5),
             "sitting": random.uniform(0.2, 0.4),

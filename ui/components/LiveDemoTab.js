@@ -11,7 +11,7 @@ export class LiveDemoTab {
     this.state = {
       isActive: false,
       connectionState: 'disconnected',
-      currentZone: 'room_1',
+      currentZone: 'living_room',
       debugMode: false,
       autoReconnect: true,
       renderMode: 'skeleton'
@@ -35,7 +35,7 @@ export class LiveDemoTab {
     
     // Configuration
     this.config = {
-      defaultZone: 'room_1',
+      defaultZone: 'living_room',
       reconnectDelay: 3000,
       healthCheckInterval: 10000,
       maxConnectionAttempts: 5,
@@ -99,9 +99,11 @@ export class LiveDemoTab {
               <button class="btn btn--secondary" id="stop-enhanced-demo" disabled>Stop Detection</button>
               <button class="btn btn--primary" id="toggle-debug">Debug Mode</button>
               <select class="zone-select" id="zone-selector">
-                <option value="room_1">Room 1</option>
-                <option value="room_2">Room 2</option>
-                <option value="room_3">Room 3</option>
+                <option value="living_room">Living Room</option>
+                <option value="bedroom">Bedroom</option>
+                <option value="kitchen">Kitchen</option>
+                <option value="bathroom">Bathroom</option>
+                <option value="hallway">Hallway</option>
               </select>
             </div>
           </div>

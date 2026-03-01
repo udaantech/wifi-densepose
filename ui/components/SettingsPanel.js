@@ -22,8 +22,8 @@ export class SettingsPanel {
 
     this.settings = {
       // Connection settings
-      zones: ['room_1', 'room_2', 'room_3'],
-      currentZone: 'room_1',
+      zones: ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'],
+      currentZone: 'living_room',
       autoReconnect: true,
       connectionTimeout: 10000,
 
@@ -673,8 +673,8 @@ export class SettingsPanel {
 
   getDefaultSettings() {
     return {
-      zones: ['room_1', 'room_2', 'room_3'],
-      currentZone: 'room_1',
+      zones: ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'],
+      currentZone: 'living_room',
       autoReconnect: true,
       connectionTimeout: 10000,
       confidenceThreshold: 0.3,

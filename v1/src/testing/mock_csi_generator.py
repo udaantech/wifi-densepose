@@ -199,6 +199,42 @@ class MockCSIGenerator:
             self.movement_amplitude = saved_movement
             self.noise_level = saved_noise
 
+    def generate_room_frame(
+        self,
+        room_params: Dict[str, Any],
+    ) -> np.ndarray:
+        """Generate a CSI frame with room-specific physics.
+
+        Each room type produces distinct signal characteristics based on
+        its physical properties (size, materials, geometry).
+
+        Args:
+            room_params: Dictionary with:
+                - amplitude_scale: Path-loss factor (0-1, smaller = more loss)
+                - noise_multiplier: Wall/material noise level
+                - movement_amplitude: Multipath richness
+                - phase_offset: Room-specific phase shift
+
+        Returns:
+            Complex-valued numpy array of shape
+            ``(num_antennas, num_subcarriers, num_samples)``.
+        """
+        saved_amplitude_base = self._amplitude_base
+        saved_movement = self.movement_amplitude
+        saved_noise = self.noise_level
+
+        try:
+            self._amplitude_base = room_params.get("amplitude_scale", 1.0)
+            self.movement_amplitude = room_params.get("movement_amplitude", 0.2)
+            self.noise_level = room_params.get("noise_multiplier", 0.1)
+            # Apply room-specific phase offset for distinct signatures
+            self._phase += room_params.get("phase_offset", 0.0)
+            return self.generate()
+        finally:
+            self._amplitude_base = saved_amplitude_base
+            self.movement_amplitude = saved_movement
+            self.noise_level = saved_noise
+
     def get_router_info(self) -> Dict[str, Any]:
         """Return mock router hardware information.
 

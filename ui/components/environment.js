@@ -26,9 +26,11 @@ export class Environment {
 
     // Detection zones
     this.zones = [
-      { id: 'room_1', center: [-2, 0, 0], radius: 2, color: 0x0066ff, label: 'Room 1' },
-      { id: 'room_2', center: [0, 0, 0], radius: 2, color: 0x00cc66, label: 'Room 2' },
-      { id: 'room_3', center: [2, 0, 0], radius: 2, color: 0xff6600, label: 'Room 3' }
+      { id: 'living_room', center: [-3, 0, 0], radius: 2.5, color: 0x0066ff, label: 'Living Room' },
+      { id: 'bedroom', center: [0, 0, 0], radius: 2, color: 0x00cc66, label: 'Bedroom' },
+      { id: 'kitchen', center: [3, 0, 0], radius: 1.8, color: 0xff6600, label: 'Kitchen' },
+      { id: 'bathroom', center: [-1.5, 0, 3], radius: 1.2, color: 0xff00ff, label: 'Bathroom' },
+      { id: 'hallway', center: [1.5, 0, 3], radius: 1.5, color: 0xffcc00, label: 'Hallway' }
     ];
 
     // Confidence heatmap state

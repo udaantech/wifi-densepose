@@ -171,9 +171,9 @@ export class DataProcessor {
 
     // Determine active zone based on position
     const hipX = (interpolatedKeypoints[11].x + interpolatedKeypoints[12].x) / 2;
-    let activeZone = 'room_2';
-    if (hipX < 0.35) activeZone = 'room_1';
-    else if (hipX > 0.65) activeZone = 'room_3';
+    let activeZone = 'bedroom';
+    if (hipX < 0.35) activeZone = 'living_room';
+    else if (hipX > 0.65) activeZone = 'kitchen';
 
     return {
       persons: [{

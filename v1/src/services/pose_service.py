@@ -518,7 +518,7 @@ class PoseService:
 
             metadata = {
                 "timestamp": datetime.now().isoformat(),
-                "zone_ids": zone_ids or list(self.domain_config.zones.keys()) or ["room_1"],
+                "zone_ids": zone_ids or list(self.domain_config.zones.keys()) or ["living_room"],
                 "confidence_threshold": confidence_threshold or self.settings.pose_confidence_threshold,
                 "max_persons": max_persons or self.settings.pose_max_persons,
             }
@@ -544,7 +544,7 @@ class PoseService:
 
             # Build list of available zone IDs
             configured_zones = list(self.domain_config.zones.keys())
-            available_zones = zone_ids or configured_zones or ["room_1"]
+            available_zones = zone_ids or configured_zones or ["living_room"]
 
             # Format for API response
             persons = []
@@ -859,7 +859,7 @@ class PoseService:
             
             # Group persons by zone
             for person in result["persons"]:
-                fallback_zone = next(iter(self.domain_config.zones), "room_1")
+                fallback_zone = next(iter(self.domain_config.zones), "living_room")
                 zone_id = person.get("zone_id", fallback_zone)
                 
                 if zone_id not in zone_data:
