@@ -145,17 +145,17 @@ class ConnectionManager:
             # Store connection
             self.connections[client_id] = connection
             self.connections_by_type[stream_type].add(client_id)
-            
+
             # Index by zones
             if zone_ids:
                 for zone_id in zone_ids:
                     self.connections_by_zone[zone_id].add(client_id)
-            
+
             # Update metrics
             self.metrics["total_connections"] += 1
             self.metrics["active_connections"] = len(self.connections)
-            
-            logger.info(f"WebSocket client {client_id} connected for {stream_type}")
+
+            logger.info(f"WebSocket client {client_id} connected for {stream_type} (manager id={id(self)}, total={len(self.connections)})")
             
             return client_id
             

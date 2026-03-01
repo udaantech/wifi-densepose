@@ -514,7 +514,7 @@ class PoseService:
                 )
 
             metadata = {
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now().isoformat(),
                 "zone_ids": zone_ids or ["zone_1"],
                 "confidence_threshold": confidence_threshold or self.settings.pose_confidence_threshold,
                 "max_persons": max_persons or self.settings.pose_max_persons,
@@ -548,7 +548,7 @@ class PoseService:
                     "bounding_box": pose["bounding_box"],
                     "zone_id": zone_ids[0] if zone_ids else "zone_1",
                     "activity": pose["activity"],
-                    "timestamp": datetime.fromisoformat(pose["timestamp"]) if isinstance(pose["timestamp"], str) else pose["timestamp"],
+                    "timestamp": pose["timestamp"] if isinstance(pose["timestamp"], str) else pose["timestamp"].isoformat(),
                 }
 
                 if include_keypoints:
@@ -567,7 +567,7 @@ class PoseService:
                 zone_summary[zone_id] = len([p for p in persons if p.get("zone_id") == zone_id])
 
             return {
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now().isoformat(),
                 "frame_id": f"frame_{int(datetime.now().timestamp())}",
                 "persons": persons,
                 "zone_summary": zone_summary,
@@ -810,10 +810,10 @@ class PoseService:
                 zone_data[zone_id]["pose"]["persons"].append(person)
                 zone_data[zone_id]["pose"]["count"] += 1
                 
-                # Update zone confidence (average)
-                current_confidence = zone_data[zone_id]["confidence"]
+                # Update zone confidence (max of all persons in zone)
                 person_confidence = person.get("confidence", 0.0)
-                zone_data[zone_id]["confidence"] = (current_confidence + person_confidence) / 2
+                if person_confidence > zone_data[zone_id]["confidence"]:
+                    zone_data[zone_id]["confidence"] = person_confidence
                 
                 # Set activity if not already set
                 if not zone_data[zone_id]["activity"] and person.get("activity"):

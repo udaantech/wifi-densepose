@@ -166,8 +166,8 @@ class PoseStreamHandler:
                 stream_type="pose",
                 zone_ids=[pose_data.zone_id]
             )
-            
-            logger.info(f"✅ Broadcasted pose data for zone {pose_data.zone_id} to {sent_count} clients")
+
+            logger.info(f"✅ Broadcasted zone {pose_data.zone_id} to {sent_count}/{len(self.connection_manager.connections)} clients (mgr={id(self.connection_manager)})")
         
         except Exception as e:
             logger.error(f"Error broadcasting pose data: {e}")

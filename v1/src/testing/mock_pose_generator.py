@@ -9,6 +9,7 @@ WARNING: This module uses random number generation intentionally for test data.
 Do NOT use this module in production data paths.
 """
 
+import math
 import random
 import logging
 from typing import Dict, List, Any, Optional
@@ -38,42 +39,145 @@ def _show_banner() -> None:
         _banner_shown = True
 
 
-def generate_mock_keypoints() -> List[Dict[str, Any]]:
-    """Generate mock keypoints for a single person.
+# Anatomically plausible base template for COCO 17-keypoint format.
+# Coordinates are normalized (0-1) for a standing human facing the camera.
+# Origin is top-left; y increases downward.
+_BASE_POSE = {
+    "nose":            (0.500, 0.110),
+    "left_eye":        (0.515, 0.095),
+    "right_eye":       (0.485, 0.095),
+    "left_ear":        (0.535, 0.105),
+    "right_ear":       (0.465, 0.105),
+    "left_shoulder":   (0.570, 0.200),
+    "right_shoulder":  (0.430, 0.200),
+    "left_elbow":      (0.620, 0.340),
+    "right_elbow":     (0.380, 0.340),
+    "left_wrist":      (0.640, 0.470),
+    "right_wrist":     (0.360, 0.470),
+    "left_hip":        (0.550, 0.520),
+    "right_hip":       (0.450, 0.520),
+    "left_knee":       (0.560, 0.700),
+    "right_knee":      (0.440, 0.700),
+    "left_ankle":      (0.565, 0.880),
+    "right_ankle":     (0.435, 0.880),
+}
+
+# A few activity-specific base poses for variety.
+_SITTING_OFFSETS = {
+    "left_knee":   (0.04, -0.12),
+    "right_knee":  (-0.04, -0.12),
+    "left_ankle":  (0.06, -0.06),
+    "right_ankle": (-0.06, -0.06),
+    "left_hip":    (0.0, -0.02),
+    "right_hip":   (0.0, -0.02),
+}
+
+_WALKING_OFFSETS = {
+    "left_knee":   (0.02, 0.0),
+    "right_knee":  (-0.02, 0.02),
+    "left_ankle":  (0.03, -0.02),
+    "right_ankle": (-0.03, 0.03),
+    "left_elbow":  (-0.02, 0.0),
+    "right_elbow": (0.02, 0.0),
+    "left_wrist":  (-0.03, -0.02),
+    "right_wrist": (0.03, -0.02),
+}
+
+_ACTIVITY_OFFSETS = {
+    "sitting": _SITTING_OFFSETS,
+    "walking": _WALKING_OFFSETS,
+}
+
+
+def generate_mock_keypoints(
+    center_x: float = 0.5,
+    center_y: float = 0.5,
+    scale: float = 1.0,
+    activity: str = "standing",
+    time_seed: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """Generate anatomically plausible mock keypoints for a single person.
+
+    The keypoints are based on a human body template with small random
+    perturbations to simulate natural movement.
+
+    Args:
+        center_x: Horizontal center of the person (0-1).
+        center_y: Vertical center of the person (0-1).
+        scale: Size multiplier (1.0 = default height ~0.8 of frame).
+        activity: One of standing, sitting, walking, lying.
+        time_seed: Optional time value for smooth animation.
 
     Returns:
         List of 17 COCO-format keypoint dictionaries with name, x, y, confidence.
     """
-    keypoint_names = [
-        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-        "left_wrist", "right_wrist", "left_hip", "right_hip",
-        "left_knee", "right_knee", "left_ankle", "right_ankle",
-    ]
+    t = time_seed if time_seed is not None else datetime.now().timestamp()
+
+    # Get activity offsets
+    offsets = _ACTIVITY_OFFSETS.get(activity, {})
+
+    # Breathing / idle sway animation
+    sway_x = math.sin(t * 0.8) * 0.005
+    sway_y = math.sin(t * 1.2) * 0.003
 
     keypoints = []
-    for name in keypoint_names:
+    for name, (bx, by) in _BASE_POSE.items():
+        # Apply activity-specific offsets
+        ox, oy = offsets.get(name, (0.0, 0.0))
+
+        # Shift from default center (0.5, 0.5) to requested center and apply scale
+        x = center_x + (bx - 0.5 + ox) * scale + sway_x
+        y = center_y + (by - 0.5 + oy) * scale + sway_y
+
+        # Small per-keypoint jitter for realism
+        x += random.gauss(0, 0.004) * scale
+        y += random.gauss(0, 0.004) * scale
+
+        # Clamp to valid range
+        x = max(0.01, min(0.99, x))
+        y = max(0.01, min(0.99, y))
+
+        # Extremities tend to have slightly lower confidence
+        if "ankle" in name or "wrist" in name:
+            conf = random.uniform(0.55, 0.85)
+        elif "ear" in name or "eye" in name:
+            conf = random.uniform(0.65, 0.90)
+        else:
+            conf = random.uniform(0.75, 0.95)
+
         keypoints.append({
             "name": name,
-            "x": random.uniform(0.1, 0.9),
-            "y": random.uniform(0.1, 0.9),
-            "confidence": random.uniform(0.5, 0.95),
+            "x": round(x, 4),
+            "y": round(y, 4),
+            "confidence": round(conf, 3),
         })
 
     return keypoints
 
 
-def generate_mock_bounding_box() -> Dict[str, float]:
+def generate_mock_bounding_box(keypoints: Optional[List[Dict[str, Any]]] = None) -> Dict[str, float]:
     """Generate a mock bounding box for a single person.
+
+    If keypoints are provided the box is derived from them; otherwise a
+    random plausible box is returned.
 
     Returns:
         Dictionary with x, y, width, height as normalized coordinates.
     """
+    if keypoints:
+        xs = [kp["x"] for kp in keypoints]
+        ys = [kp["y"] for kp in keypoints]
+        margin = 0.03
+        x = max(0.0, min(xs) - margin)
+        y = max(0.0, min(ys) - margin)
+        width = min(1.0 - x, max(xs) - min(xs) + 2 * margin)
+        height = min(1.0 - y, max(ys) - min(ys) + 2 * margin)
+        return {"x": round(x, 4), "y": round(y, 4), "width": round(width, 4), "height": round(height, 4)}
+
     x = random.uniform(0.1, 0.6)
     y = random.uniform(0.1, 0.6)
     width = random.uniform(0.2, 0.4)
     height = random.uniform(0.3, 0.5)
-
     return {"x": x, "y": y, "width": width, "height": height}
 
 
@@ -91,15 +195,41 @@ def generate_mock_poses(max_persons: int = 3) -> List[Dict[str, Any]]:
     num_persons = random.randint(1, min(3, max_persons))
     poses = []
 
+    # Spread people across the frame so they don't overlap
+    positions = [
+        (0.35, 0.50),
+        (0.65, 0.50),
+        (0.50, 0.50),
+        (0.25, 0.50),
+        (0.75, 0.50),
+    ]
+
+    t = datetime.now().timestamp()
+
     for i in range(num_persons):
-        confidence = random.uniform(0.3, 0.95)
+        cx, cy = positions[i % len(positions)]
+        # Small random drift per frame
+        cx += math.sin(t * 0.3 + i * 2.0) * 0.04
+        cy += math.cos(t * 0.2 + i * 1.5) * 0.02
+
+        activity = random.choice(["standing", "sitting", "walking"])
+        confidence = random.uniform(0.55, 0.95)
+        scale = random.uniform(0.85, 1.05)
+
+        keypoints = generate_mock_keypoints(
+            center_x=cx,
+            center_y=cy,
+            scale=scale,
+            activity=activity,
+            time_seed=t + i * 100,
+        )
 
         pose = {
             "person_id": i,
             "confidence": confidence,
-            "keypoints": generate_mock_keypoints(),
-            "bounding_box": generate_mock_bounding_box(),
-            "activity": random.choice(["standing", "sitting", "walking", "lying"]),
+            "keypoints": keypoints,
+            "bounding_box": generate_mock_bounding_box(keypoints),
+            "activity": activity,
             "timestamp": datetime.now().isoformat(),
         }
 
