@@ -322,35 +322,36 @@ async def calibrate_pose_system(
     background_tasks: BackgroundTasks,
     pose_service: PoseService = Depends(get_pose_service),
     hardware_service: HardwareService = Depends(get_hardware_service),
-    current_user: Dict = Depends(require_auth)
+    current_user: Optional[Dict] = Depends(get_current_user)
 ):
     """Calibrate the pose estimation system."""
     try:
-        logger.info(f"Pose system calibration initiated by user: {current_user['id']}")
-        
+        user_id = current_user["id"] if current_user else "anonymous"
+        logger.info(f"Pose system calibration initiated by user: {user_id}")
+
         # Check if calibration is already in progress
         if await pose_service.is_calibrating():
             raise HTTPException(
                 status_code=409,
                 detail="Calibration already in progress"
             )
-        
+
         # Start calibration process
         calibration_id = await pose_service.start_calibration()
-        
+
         # Schedule background calibration task
         background_tasks.add_task(
             pose_service.run_calibration,
             calibration_id
         )
-        
+
         return {
             "calibration_id": calibration_id,
             "status": "started",
-            "estimated_duration_minutes": 5,
-            "message": "Calibration process started"
+            "estimated_duration_seconds": 30,
+            "message": "Calibration process started (4 phases)"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -364,21 +365,13 @@ async def calibrate_pose_system(
 @router.get("/calibration/status")
 async def get_calibration_status(
     pose_service: PoseService = Depends(get_pose_service),
-    current_user: Dict = Depends(require_auth)
+    current_user: Optional[Dict] = Depends(get_current_user)
 ):
-    """Get current calibration status."""
+    """Get current calibration status with phase details."""
     try:
         status = await pose_service.get_calibration_status()
-        
-        return {
-            "is_calibrating": status["is_calibrating"],
-            "calibration_id": status.get("calibration_id"),
-            "progress_percent": status.get("progress_percent", 0),
-            "current_step": status.get("current_step"),
-            "estimated_remaining_minutes": status.get("estimated_remaining_minutes"),
-            "last_calibration": status.get("last_calibration")
-        }
-        
+        return status
+
     except Exception as e:
         logger.error(f"Error getting calibration status: {e}")
         raise HTTPException(

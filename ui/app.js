@@ -5,6 +5,7 @@ import { DashboardTab } from './components/DashboardTab.js';
 import { HardwareTab } from './components/HardwareTab.js';
 import { LiveDemoTab } from './components/LiveDemoTab.js';
 import { SensingTab } from './components/SensingTab.js';
+import { CalibrationTab } from './components/CalibrationTab.js';
 import { apiService } from './services/api.service.js';
 import { wsService } from './services/websocket.service.js';
 import { healthService } from './services/health.service.js';
@@ -128,6 +129,13 @@ class WiFiDensePoseApp {
     const sensingContainer = document.getElementById('sensing');
     if (sensingContainer) {
       this.components.sensing = new SensingTab(sensingContainer);
+    }
+
+    // Calibration tab
+    const calibrationContainer = document.getElementById('calibration');
+    if (calibrationContainer) {
+      this.components.calibration = new CalibrationTab(calibrationContainer);
+      this.components.calibration.init();
     }
 
     // Architecture tab - static content, no component needed

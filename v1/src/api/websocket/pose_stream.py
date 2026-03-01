@@ -45,7 +45,7 @@ class PoseStreamHandler:
         self.stream_task = None
         self.subscribers = {}
         self.stream_config = {
-            "fps": 30,
+            "fps": 10,
             "min_confidence": 0.5,
             "include_metadata": True,
             "buffer_size": 100
@@ -167,7 +167,7 @@ class PoseStreamHandler:
                 zone_ids=[pose_data.zone_id]
             )
 
-            logger.info(f"✅ Broadcasted zone {pose_data.zone_id} to {sent_count}/{len(self.connection_manager.connections)} clients (mgr={id(self.connection_manager)})")
+            logger.debug(f"Broadcasted zone {pose_data.zone_id} to {sent_count}/{len(self.connection_manager.connections)} clients")
         
         except Exception as e:
             logger.error(f"Error broadcasting pose data: {e}")

@@ -721,15 +721,24 @@ export class PoseDetectionCanvas {
   startDemoAnimation() {
     if (!this.demoState || !this.demoState.isRunning) return;
 
+    const now = Date.now();
+    const targetInterval = 125; // ~8 FPS — realistic for WiFi CSI sensing
+
+    if (this.demoState._lastFrameTime && now - this.demoState._lastFrameTime < targetInterval) {
+      this.demoAnimationFrame = requestAnimationFrame(() => this.startDemoAnimation());
+      return;
+    }
+    this.demoState._lastFrameTime = now;
+
     this.demoState.frameCount++;
-    const elapsed = (Date.now() - this.demoState.startTime) / 1000;
-    
+    const elapsed = (now - this.demoState.startTime) / 1000;
+
     // Generate animated pose data
     const animatedPoseData = this.generateAnimatedPoseData(elapsed);
-    
+
     // Render the animated data
     this.renderPoseData(animatedPoseData);
-    
+
     // Continue animation
     this.demoAnimationFrame = requestAnimationFrame(() => this.startDemoAnimation());
   }

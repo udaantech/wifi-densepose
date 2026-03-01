@@ -158,6 +158,47 @@ class MockCSIGenerator:
         if "movement_amplitude" in config:
             self.movement_amplitude = config["movement_amplitude"]
 
+    def generate_calibration_frame(
+        self,
+        scenario: str = "empty",
+        zone_config: Optional[Dict[str, Any]] = None,
+    ) -> np.ndarray:
+        """Generate a CSI frame for a specific calibration scenario.
+
+        Args:
+            scenario: One of ``"empty"`` (no movement), ``"presence"``
+                (person present), or ``"zone"`` (zone-specific parameters).
+            zone_config: Optional dict with zone physical properties used
+                when *scenario* is ``"zone"``.  Expected keys:
+                ``x_range``, ``y_range``, ``z_range``, ``noise_multiplier``.
+
+        Returns:
+            Complex-valued numpy array of shape
+            ``(num_antennas, num_subcarriers, num_samples)``.
+        """
+        saved_movement = self.movement_amplitude
+        saved_noise = self.noise_level
+
+        try:
+            if scenario == "empty":
+                self.movement_amplitude = 0.0
+                self.noise_level = saved_noise * 0.8
+            elif scenario == "presence":
+                self.movement_amplitude = 0.35
+            elif scenario == "zone" and zone_config:
+                volume = (
+                    zone_config.get("x_range", 10)
+                    * zone_config.get("y_range", 10)
+                    * zone_config.get("z_range", 3)
+                )
+                self.movement_amplitude = 0.1 + 0.3 * min(1.0, volume / 150.0)
+                self.noise_level = zone_config.get("noise_multiplier", saved_noise)
+
+            return self.generate()
+        finally:
+            self.movement_amplitude = saved_movement
+            self.noise_level = saved_noise
+
     def get_router_info(self) -> Dict[str, Any]:
         """Return mock router hardware information.
 

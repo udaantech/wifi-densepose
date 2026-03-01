@@ -18,6 +18,7 @@ from src.config.settings import Settings
 from src.config.domains import DomainConfig
 from src.core.csi_processor import CSIProcessor
 from src.core.phase_sanitizer import PhaseSanitizer
+from src.services.calibration_engine import CalibrationEngine, CalibrationResults
 from src.models.densepose_head import DensePoseHead
 from src.models.modality_translation import ModalityTranslationNetwork
 
@@ -47,6 +48,8 @@ class PoseService:
         self._calibration_in_progress: bool = False
         self._calibration_id: Optional[str] = None
         self._calibration_start: Optional[datetime] = None
+        self._calibration_engine: Optional[CalibrationEngine] = None
+        self._calibration_results: Optional[CalibrationResults] = None
         
         # Processing statistics
         self.stats = {
@@ -539,14 +542,20 @@ class PoseService:
                     "confidence_scores": [p.get("confidence", 0.0) for p in mock_poses],
                 }
 
+            # Build list of available zone IDs
+            configured_zones = list(self.domain_config.zones.keys())
+            available_zones = zone_ids or configured_zones or ["room_1"]
+
             # Format for API response
             persons = []
             for i, pose in enumerate(result["poses"]):
+                # Distribute persons across zones via round-robin
+                assigned_zone = available_zones[i % len(available_zones)]
                 person = {
                     "person_id": str(pose["person_id"]),
                     "confidence": pose["confidence"],
                     "bounding_box": pose["bounding_box"],
-                    "zone_id": zone_ids[0] if zone_ids else "zone_1",
+                    "zone_id": assigned_zone,
                     "activity": pose["activity"],
                     "timestamp": pose["timestamp"] if isinstance(pose["timestamp"], str) else pose["timestamp"].isoformat(),
                 }
@@ -563,8 +572,8 @@ class PoseService:
 
             # Zone summary
             zone_summary = {}
-            for zone_id in (zone_ids or ["zone_1"]):
-                zone_summary[zone_id] = len([p for p in persons if p.get("zone_id") == zone_id])
+            for zid in available_zones:
+                zone_summary[zid] = len([p for p in persons if p.get("zone_id") == zid])
 
             return {
                 "timestamp": datetime.now().isoformat(),
@@ -616,14 +625,15 @@ class PoseService:
         empty zones until real CSI data is being processed.
         """
         try:
+            configured_zones = list(self.domain_config.zones.keys())
+
             if self.settings.mock_pose_data:
                 from src.testing.mock_pose_generator import generate_mock_zones_summary
-                return generate_mock_zones_summary()
+                return generate_mock_zones_summary(zone_ids=configured_zones or None)
 
-            # Production: no real-time data without active CSI stream
-            zones = ["zone_1", "zone_2", "zone_3", "zone_4"]
+            # Production: use configured zones
             zone_data = {}
-            for zone_id in zones:
+            for zone_id in configured_zones:
                 zone_data[zone_id] = {
                     "occupancy": 0,
                     "max_occupancy": 10,
@@ -634,7 +644,6 @@ class PoseService:
                 "total_persons": 0,
                 "zones": zone_data,
                 "active_zones": 0,
-                "note": "No real-time CSI data available. Connect hardware to get live occupancy.",
             }
 
         except Exception as e:
@@ -694,9 +703,10 @@ class PoseService:
         return self._calibration_in_progress
 
     async def start_calibration(self):
-        """Start calibration process."""
+        """Start calibration process using the CalibrationEngine."""
         import uuid
         calibration_id = str(uuid.uuid4())
+        self._calibration_engine = CalibrationEngine(self.settings, self.domain_config)
         self._calibration_id = calibration_id
         self._calibration_in_progress = True
         self._calibration_start = datetime.now()
@@ -704,34 +714,92 @@ class PoseService:
         return calibration_id
 
     async def run_calibration(self, calibration_id):
-        """Run calibration process: collect baseline CSI statistics over 5 seconds."""
-        self.logger.info(f"Running calibration: {calibration_id}")
-        # Collect baseline noise floor over 5 seconds at the configured sampling rate
-        await asyncio.sleep(5)
-        self._calibration_in_progress = False
-        self._calibration_id = None
-        self.logger.info(f"Calibration completed: {calibration_id}")
+        """Run the full 4-phase calibration pipeline."""
+        try:
+            results = await self._calibration_engine.run_full_calibration(calibration_id)
+            self._calibration_results = results
+            self._apply_calibration_results(results)
+            self._calibration_in_progress = False
+            self.logger.info(f"Calibration completed: {calibration_id}")
+        except Exception as e:
+            self.logger.error(f"Calibration failed: {e}")
+            self._calibration_in_progress = False
+            raise
+
+    def _apply_calibration_results(self, results: CalibrationResults):
+        """Apply calibration results to the live detection pipeline."""
+        # Update CSI processor thresholds if available
+        if self.csi_processor:
+            self.csi_processor.noise_threshold = results.noise_threshold
+            self.csi_processor.human_detection_threshold = results.human_detection_threshold
+
+        # Update per-zone confidence thresholds and attach calibration signatures
+        for zone_id, threshold in results.detection_thresholds.items():
+            zone = self.domain_config.get_zone(zone_id)
+            if zone:
+                zone.confidence_threshold = threshold
+                sig = results.zone_signatures.get(zone_id, {})
+                zone.calibration_data = {
+                    "feature_centroid": sig.get("feature_centroid"),
+                    "feature_spread": sig.get("feature_spread"),
+                    "deviation_from_baseline": sig.get("deviation_from_baseline"),
+                    "detection_threshold": threshold,
+                    "calibrated_at": results.calibrated_at,
+                }
+
+        # Mark routers as calibrated
+        for router in self.domain_config.get_all_routers():
+            router.calibrated = True
+            router.calibration_data = {
+                "noise_floor": results.noise_floor,
+                "calibrated_at": results.calibrated_at,
+                "noise_threshold": results.noise_threshold,
+                "human_detection_threshold": results.human_detection_threshold,
+                "validation_metrics": results.validation_metrics,
+            }
+
+        self.logger.info(
+            "Applied calibration: noise_threshold=%.4f, detection_threshold=%.4f",
+            results.noise_threshold,
+            results.human_detection_threshold,
+        )
 
     async def get_calibration_status(self):
-        """Get current calibration status."""
-        if self._calibration_in_progress and self._calibration_start is not None:
-            elapsed = (datetime.now() - self._calibration_start).total_seconds()
-            progress = min(100.0, (elapsed / 5.0) * 100.0)
+        """Get current calibration status with detailed phase information."""
+        if self._calibration_engine and self._calibration_in_progress:
+            state = self._calibration_engine.state
             return {
                 "is_calibrating": True,
-                "calibration_id": self._calibration_id,
-                "progress_percent": round(progress, 1),
-                "current_step": "collecting_baseline",
-                "estimated_remaining_minutes": max(0.0, (5.0 - elapsed) / 60.0),
+                "calibration_id": state.calibration_id,
+                "progress_percent": state.progress_percent,
+                "current_phase": state.current_phase,
+                "phase_name": state.phase_name,
+                "phase_results": state.phase_results,
+                "estimated_remaining_minutes": max(0.0, (30.0 - state.progress_percent * 0.3) / 60.0),
                 "last_calibration": None,
             }
+
+        # Idle or completed
+        has_results = self._calibration_results is not None
         return {
             "is_calibrating": False,
             "calibration_id": None,
-            "progress_percent": 100,
-            "current_step": "completed",
+            "progress_percent": 100.0 if has_results else 0.0,
+            "current_phase": 4 if has_results else 0,
+            "phase_name": "completed" if has_results else "idle",
+            "phase_results": self._calibration_engine.state.phase_results if self._calibration_engine else {},
+            "calibration_results": {
+                "noise_floor": self._calibration_results.noise_floor,
+                "zone_signatures": self._calibration_results.zone_signatures,
+                "detection_thresholds": self._calibration_results.detection_thresholds,
+                "noise_threshold": self._calibration_results.noise_threshold,
+                "human_detection_threshold": self._calibration_results.human_detection_threshold,
+                "validation_metrics": self._calibration_results.validation_metrics,
+                "calibrated_at": self._calibration_results.calibrated_at,
+                "duration_seconds": self._calibration_results.duration_seconds,
+            } if has_results else None,
             "estimated_remaining_minutes": 0,
-            "last_calibration": self._calibration_start,
+            "last_calibration": self._calibration_start.isoformat() if self._calibration_start else None,
         }
     
     async def get_statistics(self, start_time, end_time):
@@ -791,7 +859,8 @@ class PoseService:
             
             # Group persons by zone
             for person in result["persons"]:
-                zone_id = person.get("zone_id", "zone_1")
+                fallback_zone = next(iter(self.domain_config.zones), "room_1")
+                zone_id = person.get("zone_id", fallback_zone)
                 
                 if zone_id not in zone_data:
                     zone_data[zone_id] = {

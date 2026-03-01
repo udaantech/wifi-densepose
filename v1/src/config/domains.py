@@ -71,6 +71,9 @@ class ZoneConfig:
     # Hardware assignments
     primary_router: Optional[str] = None
     secondary_routers: List[str] = field(default_factory=list)
+
+    # Calibration data (populated by calibration engine)
+    calibration_data: Optional[Dict[str, Any]] = None
     
     # Processing settings
     processing_interval: float = 0.1  # seconds
@@ -266,35 +269,16 @@ class DomainConfig:
         self._load_defaults()
     
     def _load_defaults(self):
-        """Load default configurations."""
+        """Load default configurations.
+
+        Zones and routers are intentionally left empty — they are
+        created dynamically when the calibration wizard runs.
+        """
         # Default pose model
         self.pose_models["default"] = PoseModelConfig(
             model_name="densepose_rcnn_R_50_FPN_s1x",
             model_path="./models/densepose_rcnn_R_50_FPN_s1x.pkl",
             model_type="densepose"
-        )
-        
-        # Example zone
-        self.zones["living_room"] = ZoneConfig(
-            zone_id="living_room",
-            name="Living Room",
-            zone_type=ZoneType.LIVING_ROOM,
-            description="Main living area",
-            x_max=5.0,
-            y_max=4.0,
-            z_max=3.0
-        )
-        
-        # Example router
-        self.routers["main_router"] = RouterConfig(
-            router_id="main_router",
-            name="Main Router",
-            hardware_type=HardwareType.ROUTER,
-            ip_address="192.168.1.1",
-            mac_address="00:11:22:33:44:55",
-            x_position=2.5,
-            y_position=2.0,
-            z_position=2.5
         )
     
     def add_zone(self, zone: ZoneConfig):

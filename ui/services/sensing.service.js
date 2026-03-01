@@ -112,7 +112,9 @@ class SensingService {
     };
 
     this._ws.onclose = (evt) => {
-      console.info('[Sensing] Connection closed (code=%d)', evt.code);
+      if (this._reconnectAttempt === 0) {
+        console.debug('[Sensing] Connection closed (code=%d)', evt.code);
+      }
       this._ws = null;
       if (evt.code !== 1000) {
         this._scheduleReconnect();
@@ -131,7 +133,7 @@ class SensingService {
 
     const delay = RECONNECT_DELAYS[Math.min(this._reconnectAttempt, RECONNECT_DELAYS.length - 1)];
     this._reconnectAttempt++;
-    console.info('[Sensing] Reconnecting in %dms (attempt %d)', delay, this._reconnectAttempt);
+    console.debug('[Sensing] Reconnecting in %dms (attempt %d)', delay, this._reconnectAttempt);
 
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null;

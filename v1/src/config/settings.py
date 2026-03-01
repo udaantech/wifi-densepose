@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     pose_max_persons: int = Field(default=10, description="Maximum persons to detect per frame")
     
     # Streaming settings
-    stream_fps: int = Field(default=30, description="Streaming frames per second")
+    stream_fps: int = Field(default=10, description="Streaming frames per second")
     stream_buffer_size: int = Field(default=100, description="Stream buffer size")
     websocket_ping_interval: int = Field(default=60, description="WebSocket ping interval in seconds")
     websocket_timeout: int = Field(default=300, description="WebSocket timeout in seconds")

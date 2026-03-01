@@ -39,7 +39,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Paths that require authentication
         self.protected_paths = {
             "/api/v1/pose/analyze",
-            "/api/v1/pose/calibrate",
             "/api/v1/pose/historical",
             "/api/v1/stream/start",
             "/api/v1/stream/stop",
@@ -147,7 +146,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Pattern matching for protected paths
         protected_patterns = [
             "/api/v1/pose/analyze",
-            "/api/v1/pose/calibrate",
             "/api/v1/pose/historical",
             "/api/v1/stream/start",
             "/api/v1/stream/stop",

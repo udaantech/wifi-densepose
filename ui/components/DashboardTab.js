@@ -249,6 +249,12 @@ export class DashboardTab {
       const zonesSummary = await poseService.getZonesSummary();
       this.updateZonesDisplay(zonesSummary);
 
+      // Get stats for total detections
+      const stats = await poseService.getStats(24);
+      if (stats && stats.statistics) {
+        this.updateStats(stats.statistics);
+      }
+
     } catch (error) {
       console.error('Failed to update live stats:', error);
     }
@@ -299,32 +305,21 @@ export class DashboardTab {
       zones = zonesSummary;
     }
     
-    // If no zones data, show default zones
+    // If no zones data, show prompt to run calibration
     if (Object.keys(zones).length === 0) {
-      ['zone_1', 'zone_2', 'zone_3', 'zone_4'].forEach(zoneId => {
-        const zoneElement = document.createElement('div');
-        zoneElement.className = 'zone-item';
-        
-        // Use textContent instead of innerHTML to prevent XSS
-        const zoneNameSpan = document.createElement('span');
-        zoneNameSpan.className = 'zone-name';
-        zoneNameSpan.textContent = zoneId;
-        
-        const zoneCountSpan = document.createElement('span');
-        zoneCountSpan.className = 'zone-count';
-        zoneCountSpan.textContent = 'undefined';
-        
-        zoneElement.appendChild(zoneNameSpan);
-        zoneElement.appendChild(zoneCountSpan);
-        zonesContainer.appendChild(zoneElement);
-      });
+      const notice = document.createElement('div');
+      notice.className = 'zone-item';
+      notice.style.opacity = '0.6';
+      notice.style.fontStyle = 'italic';
+      notice.textContent = 'No zones \u2014 run Calibration first';
+      zonesContainer.appendChild(notice);
       return;
     }
     
     Object.entries(zones).forEach(([zoneId, data]) => {
       const zoneElement = document.createElement('div');
       zoneElement.className = 'zone-item';
-      const count = typeof data === 'object' ? (data.person_count || data.count || 0) : data;
+      const count = typeof data === 'object' ? (data.occupancy || data.person_count || data.count || 0) : data;
       
       // Use textContent instead of innerHTML to prevent XSS
       const zoneNameSpan = document.createElement('span');

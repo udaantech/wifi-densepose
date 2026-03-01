@@ -1,0 +1,243 @@
+/* CalibrationTab styles */
+
+.calibration-wizard {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.calibration-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--color-text);
+}
+
+.calibration-desc {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin: 0 0 28px;
+  line-height: 1.5;
+}
+
+/* ── Stepper ──────────────────────────────────────────────── */
+
+.calibration-stepper {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-bottom: 28px;
+}
+
+.stepper-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border: 2px solid var(--color-border);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.stepper-step.active .step-circle {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.stepper-step.completed .step-circle {
+  border-color: var(--color-success);
+  background: var(--color-success);
+  color: var(--color-btn-primary-text);
+}
+
+.step-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.step-sublabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.stepper-connector {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--color-border);
+  align-self: center;
+  margin: 0 8px;
+  min-width: 20px;
+  margin-top: -8px;
+}
+
+/* ── Progress ─────────────────────────────────────────────── */
+
+.calibration-progress {
+  margin-bottom: 20px;
+}
+
+.progress-bar-outer {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-secondary);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--color-primary);
+  transition: width 0.4s ease;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ── Phase Metrics ────────────────────────────────────────── */
+
+.phase-metrics {
+  margin-bottom: 20px;
+}
+
+.metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.metric-chip {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-card-border);
+  background: var(--color-surface);
+}
+
+.metric-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+}
+
+.metric-value {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: var(--font-family-mono);
+}
+
+/* ── Error ────────────────────────────────────────────────── */
+
+.calibration-error {
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(var(--color-error-rgb), var(--status-bg-opacity));
+  border: 1px solid rgba(var(--color-error-rgb), var(--status-border-opacity));
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-bottom: 16px;
+}
+
+/* ── Actions ──────────────────────────────────────────────── */
+
+.calibration-actions {
+  margin-bottom: 24px;
+}
+
+.calibration-actions .btn-primary {
+  padding: 10px 24px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  transition: background 0.15s ease;
+}
+
+.calibration-actions .btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.calibration-actions .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Results ──────────────────────────────────────────────── */
+
+.calibration-results h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--color-text);
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.result-card {
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-surface);
+}
+
+.result-card h4 {
+  margin: 0 0 12px;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--color-card-border-inner);
+}
+
+.result-row:last-child {
+  border-bottom: none;
+}
+
+.result-key {
+  color: var(--color-text-secondary);
+}
+
+.result-val {
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: var(--font-family-mono);
+}
