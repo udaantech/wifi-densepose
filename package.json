@@ -1,0 +1,17 @@
+{
+  "name": "wifi-densepose",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "concurrently -n api,ui -c blue,green \"npm run start:api\" \"npm run start:ui\"",
+    "start:api": "cd v1 && source ../.venv/bin/activate && uvicorn src.api.main:app --host 0.0.0.0 --port 3010",
+    "start:ui": "python3 -m http.server 3011 --directory ui",
+    "stop": "lsof -ti :3010 | xargs kill 2>/dev/null; lsof -ti :3011 | xargs kill 2>/dev/null; echo 'Stopped'",
+    "stop:api": "lsof -ti :3010 | xargs kill 2>/dev/null; echo 'API stopped'",
+    "stop:ui": "lsof -ti :3011 | xargs kill 2>/dev/null; echo 'UI stopped'",
+    "restart": "npm run stop && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

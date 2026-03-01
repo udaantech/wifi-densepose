@@ -54,8 +54,14 @@ export class WebSocketService {
     
     // Check if already connected
     if (this.connections.has(url)) {
-      this.logger.warn(`Already connected to ${url}`);
-      return this.connections.get(url).id;
+      const old = this.connections.get(url);
+      this.logger.info('Replacing existing connection', { url, oldId: old.id });
+      this.clearConnectionTimers(url);
+      if (old.ws && old.ws.readyState === WebSocket.OPEN) {
+        old.ws.onclose = null; // Prevent old onclose from interfering
+        old.ws.close(1000, 'Replaced by new connection');
+      }
+      this.connections.delete(url);
     }
 
     // Create connection data structure first
@@ -83,11 +89,18 @@ export class WebSocketService {
       const ws = await this.createWebSocketWithTimeout(url);
       connectionData.ws = ws;
 
+      // Mark as connected since createWebSocketWithTimeout resolved on open
+      connectionData.status = 'connected';
+      connectionData.lastActivity = Date.now();
+      this.reconnectAttempts.set(url, 0);
+
       // Set up event handlers
       this.setupEventHandlers(url, ws, handlers);
 
       // Start heartbeat
       this.startHeartbeat(url);
+
+      this.notifyConnectionState(url, 'connected');
 
       this.logger.info('WebSocket connection initiated', { connectionId, url });
       return connectionId;
@@ -143,27 +156,33 @@ export class WebSocketService {
     };
 
     ws.onmessage = (event) => {
-      connection.lastActivity = Date.now();
-      connection.messageCount++;
+      // Re-fetch connection from Map to avoid stale references after reconnect
+      const conn = this.connections.get(url);
+      if (!conn) {
+        this.logger.warn('Message received on cleaned-up connection', { url });
+        return;
+      }
+      conn.lastActivity = Date.now();
+      conn.messageCount++;
       
-      this.logger.debug('Message received', { url, messageCount: connection.messageCount });
-      
+      this.logger.debug('Message received', { url, messageCount: conn.messageCount });
+
       try {
         const data = JSON.parse(event.data);
-        
+
         // Handle different message types
         this.handleMessage(url, data);
-        
+
         if (handlers.onMessage) {
           handlers.onMessage(data);
         }
       } catch (error) {
-        connection.errorCount++;
-        this.logger.error('Failed to parse WebSocket message', { 
-          url, 
-          error: error.message, 
+        conn.errorCount++;
+        this.logger.error('Failed to parse WebSocket message', {
+          url,
+          error: error.message,
           rawData: event.data.substring(0, 200),
-          errorCount: connection.errorCount 
+          errorCount: conn.errorCount
         });
         
         if (handlers.onError) {
@@ -173,16 +192,20 @@ export class WebSocketService {
     };
 
     ws.onerror = (event) => {
-      connection.errorCount++;
-      this.logger.error(`WebSocket error occurred`, { 
-        url, 
-        errorCount: connection.errorCount,
-        readyState: ws.readyState 
+      // Ignore events from replaced connections
+      const current = this.connections.get(url);
+      if (!current || current.id !== connection.id) return;
+
+      current.errorCount++;
+      this.logger.error(`WebSocket error occurred`, {
+        url,
+        errorCount: current.errorCount,
+        readyState: ws.readyState
       });
-      
-      connection.status = 'error';
+
+      current.status = 'error';
       this.notifyConnectionState(url, 'error', event);
-      
+
       if (handlers.onError) {
         try {
           handlers.onError(event);
@@ -195,14 +218,21 @@ export class WebSocketService {
     ws.onclose = (event) => {
       const { code, reason, wasClean } = event;
       this.logger.info(`WebSocket closed`, { url, code, reason, wasClean });
-      
-      connection.status = 'closed';
-      
+
+      // Ignore close events from replaced connections
+      const current = this.connections.get(url);
+      if (!current || current.id !== connection.id) {
+        this.logger.debug('Ignoring close from superseded connection', { url });
+        return;
+      }
+
+      current.status = 'closed';
+
       // Clear timers
       this.clearConnectionTimers(url);
-      
+
       this.notifyConnectionState(url, 'closed', event);
-      
+
       if (handlers.onClose) {
         try {
           handlers.onClose(event);
@@ -210,7 +240,7 @@ export class WebSocketService {
           this.logger.error('Error in onClose handler', { url, error: error.message });
         }
       }
-      
+
       // Attempt reconnection if not intentionally closed
       if (!wasClean && this.shouldReconnect(url)) {
         this.scheduleReconnect(url);
