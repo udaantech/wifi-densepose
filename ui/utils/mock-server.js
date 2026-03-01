@@ -142,6 +142,65 @@ export class MockServer {
       message: 'Streaming stopped',
       status: 'inactive'
     }));
+
+    // Alert endpoints
+    this.addEndpoint('GET', '/api/v1/alerts/', () => ({
+      alerts: this.generateMockAlerts(),
+      total: 5,
+      limit: 50,
+      offset: 0
+    }));
+
+    this.addEndpoint('GET', '/api/v1/alerts/summary', () => ({
+      total: 5,
+      unacknowledged: 3,
+      by_severity: { critical: 1, warning: 2, info: 2 },
+      by_type: { intrusion: 1, occupancy_change: 2, fall_detected: 1, unusual_activity: 1 },
+      rules_active: 3,
+      rules_total: 4
+    }));
+
+    this.addEndpoint('GET', '/api/v1/alerts/rules', () => ({
+      rules: [
+        { id: 'rule_intrusion', name: 'Intrusion Detection', alert_type: 'intrusion', zone_ids: ['hallway', 'living_room'], enabled: true, severity: 'critical', conditions: { trigger: 'person_detected', schedule: 'away' } },
+        { id: 'rule_fall', name: 'Fall Detection', alert_type: 'fall_detected', zone_ids: ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'], enabled: true, severity: 'critical', conditions: { activity: 'falling' } },
+        { id: 'rule_zone', name: 'Restricted Zone', alert_type: 'zone_violation', zone_ids: ['kitchen'], enabled: false, severity: 'warning', conditions: { trigger: 'person_detected', schedule: 'night' } },
+        { id: 'rule_occupancy', name: 'Occupancy Change', alert_type: 'occupancy_change', zone_ids: ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'], enabled: true, severity: 'info', conditions: { trigger: 'occupancy_change' } }
+      ]
+    }));
+
+    this.addEndpoint('POST', '/api/v1/alerts/acknowledge-all', () => ({ acknowledged: 3 }));
+    this.addEndpoint('DELETE', '/api/v1/alerts/clear', () => ({ cleared: 5 }));
+  }
+
+  // Generate mock alerts
+  generateMockAlerts() {
+    const zones = ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'];
+    const types = [
+      { type: 'intrusion', severity: 'critical', title: 'Intrusion Detected', msg: 'Person detected in' },
+      { type: 'fall_detected', severity: 'critical', title: 'Fall Detected', msg: 'Person may have fallen in' },
+      { type: 'occupancy_change', severity: 'info', title: 'Occupancy Change', msg: 'Person entered' },
+      { type: 'unusual_activity', severity: 'warning', title: 'Unusual Activity', msg: 'Unusual movement pattern in' },
+    ];
+    const alerts = [];
+    for (let i = 0; i < 5; i++) {
+      const t = types[i % types.length];
+      const z = zones[i % zones.length];
+      const ts = new Date(Date.now() - i * 120000).toISOString();
+      alerts.push({
+        id: `alert_mock_${i}`,
+        alert_type: t.type,
+        severity: t.severity,
+        zone_id: z,
+        title: t.title,
+        message: `${t.msg} ${z.replace(/_/g, ' ')}`,
+        timestamp: ts,
+        acknowledged: i >= 3,
+        acknowledged_at: i >= 3 ? ts : null,
+        metadata: {}
+      });
+    }
+    return alerts;
   }
 
   // Generate mock person data

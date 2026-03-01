@@ -20,16 +20,7 @@ export class DashboardTab {
 
   // Cache DOM elements
   cacheElements() {
-    // System stats
-    const statsContainer = this.container.querySelector('.system-stats');
-    if (statsContainer) {
-      this.statsElements = {
-        bodyRegions: statsContainer.querySelector('[data-stat="body-regions"] .stat-value'),
-        samplingRate: statsContainer.querySelector('[data-stat="sampling-rate"] .stat-value'),
-        accuracy: statsContainer.querySelector('[data-stat="accuracy"] .stat-value'),
-        hardwareCost: statsContainer.querySelector('[data-stat="hardware-cost"] .stat-value')
-      };
-    }
+    this.statsElements = {};
 
     // Status indicators
     this.statusElements = {

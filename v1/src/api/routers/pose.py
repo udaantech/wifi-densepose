@@ -18,6 +18,7 @@ from src.api.dependencies import (
 )
 from src.services.pose_service import PoseService
 from src.services.hardware_service import HardwareService
+from src.services.alert_service import get_alert_service
 from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,14 @@ async def get_current_pose_estimation(
             include_keypoints=request.include_keypoints,
             include_segmentation=request.include_segmentation
         )
-        
+
+        # Evaluate alert rules against new pose data
+        try:
+            alert_service = get_alert_service()
+            alert_service.evaluate_pose_data(result)
+        except Exception as alert_err:
+            logger.debug(f"Alert evaluation error (non-fatal): {alert_err}")
+
         return PoseEstimationResponse(**result)
         
     except Exception as e:

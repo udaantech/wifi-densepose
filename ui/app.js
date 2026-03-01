@@ -2,10 +2,10 @@
 
 import { TabManager } from './components/TabManager.js';
 import { DashboardTab } from './components/DashboardTab.js';
-import { HardwareTab } from './components/HardwareTab.js';
 import { LiveDemoTab } from './components/LiveDemoTab.js';
 import { SensingTab } from './components/SensingTab.js';
 import { CalibrationTab } from './components/CalibrationTab.js';
+import { AlertsTab } from './components/AlertsTab.js';
 import { apiService } from './services/api.service.js';
 import { wsService } from './services/websocket.service.js';
 import { healthService } from './services/health.service.js';
@@ -111,11 +111,11 @@ class WiFiDensePoseApp {
       });
     }
 
-    // Hardware tab
-    const hardwareContainer = document.getElementById('hardware');
-    if (hardwareContainer) {
-      this.components.hardware = new HardwareTab(hardwareContainer);
-      this.components.hardware.init();
+    // Alerts tab
+    const alertsContainer = document.getElementById('alerts');
+    if (alertsContainer) {
+      this.components.alerts = new AlertsTab(alertsContainer);
+      this.components.alerts.init();
     }
 
     // Live demo tab
@@ -138,11 +138,6 @@ class WiFiDensePoseApp {
       this.components.calibration.init();
     }
 
-    // Architecture tab - static content, no component needed
-
-    // Performance tab - static content, no component needed
-
-    // Applications tab - static content, no component needed
   }
 
   // Handle tab changes
@@ -159,11 +154,7 @@ class WiFiDensePoseApp {
       case 'dashboard':
         // Dashboard auto-updates when visible
         break;
-        
-      case 'hardware':
-        // Hardware visualization is always active
-        break;
-        
+
       case 'demo':
         // Demo starts manually
         break;
