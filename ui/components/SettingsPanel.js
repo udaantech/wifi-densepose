@@ -22,16 +22,16 @@ export class SettingsPanel {
 
     this.settings = {
       // Connection settings
-      zones: ['zone_1', 'zone_2', 'zone_3'],
-      currentZone: 'zone_1',
+      zones: ['room_1', 'room_2', 'room_3'],
+      currentZone: 'room_1',
       autoReconnect: true,
       connectionTimeout: 10000,
-      
+
       // Pose detection settings
       confidenceThreshold: 0.3,
       keypointConfidenceThreshold: 0.1,
       maxPersons: 10,
-      maxFps: 30,
+      maxFps: 10,
       
       // Rendering settings
       renderMode: 'skeleton',
@@ -673,8 +673,8 @@ export class SettingsPanel {
 
   getDefaultSettings() {
     return {
-      zones: ['zone_1', 'zone_2', 'zone_3'],
-      currentZone: 'zone_1',
+      zones: ['room_1', 'room_2', 'room_3'],
+      currentZone: 'room_1',
       autoReconnect: true,
       connectionTimeout: 10000,
       confidenceThreshold: 0.3,

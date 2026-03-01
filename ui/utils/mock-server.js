@@ -112,10 +112,9 @@ export class MockServer {
 
     this.addEndpoint('GET', '/api/v1/pose/zones/summary', () => ({
       zones: {
-        'zone_1': Math.floor(Math.random() * 2),
-        'zone_2': Math.floor(Math.random() * 2),
-        'zone_3': Math.floor(Math.random() * 2),
-        'zone_4': Math.floor(Math.random() * 2)
+        'room_1': Math.floor(Math.random() * 2),
+        'room_2': Math.floor(Math.random() * 2),
+        'room_3': Math.floor(Math.random() * 2)
       }
     }));
 
@@ -349,7 +348,7 @@ export class MockServer {
                 data: JSON.stringify({
                   type: 'pose_data',
                   timestamp: new Date().toISOString(),
-                  zone_id: 'zone_1',
+                  zone_id: 'room_1',
                   data: {
                     pose: {
                       persons: persons

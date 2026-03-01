@@ -19,7 +19,7 @@ export class PoseDetectionCanvas {
       autoResize: true,
       enableStats: true,
       enableControls: true,
-      zoneId: 'zone_1',
+      zoneId: 'room_1',
       updateInterval: 50, // ms
       ...options
     };
@@ -583,18 +583,18 @@ export class PoseDetectionCanvas {
       this.state.isActive = true;
       this.state.frameCount = 0;
       this.state.startTime = Date.now();
-      
+
       this.clearError();
       this.updateControls();
 
-      await poseService.startPoseStream({
-        zoneIds: [this.config.zoneId],
-        minConfidence: 0.3,
-        maxFps: 30
-      });
+      // Use REST API polling to fetch pose data from the backend.
+      // The WebSocket stream requires a separate /stream/start call,
+      // so polling is the simpler and more reliable path.
+      this.startPolling();
 
       this.notifyCallback('onStateChange', { isActive: true });
-      this.logger.info('Pose detection started successfully');
+      this.setConnectionState('connected');
+      this.logger.info('Pose detection started via REST polling');
     } catch (error) {
       this.logger.error('Failed to start pose detection', { error: error.message });
       this.state.isActive = false;
@@ -604,12 +604,54 @@ export class PoseDetectionCanvas {
     }
   }
 
+  // REST API polling for pose data
+  startPolling() {
+    this.stopPolling();
+    this.logger.info('Starting REST API polling for pose data');
+    this.pollingInterval = setInterval(async () => {
+      if (!this.state.isActive) {
+        this.stopPolling();
+        return;
+      }
+      try {
+        const poseData = await poseService.getCurrentPose({
+          zoneIds: [this.config.zoneId]
+        });
+        if (poseData) {
+          // Normalize field names for the renderer (API uses bounding_box, renderer expects bbox)
+          if (poseData.persons) {
+            poseData.persons.forEach(p => {
+              if (p.bounding_box && !p.bbox) {
+                p.bbox = p.bounding_box;
+              }
+            });
+          }
+          this.state.lastPoseData = poseData;
+          this.state.frameCount++;
+          this.renderPoseData(poseData);
+          this.updateStats();
+          this.notifyCallback('onPoseUpdate', poseData);
+        }
+      } catch (err) {
+        this.logger.debug('Polling error', { error: err.message });
+      }
+    }, 500); // Poll every 500ms
+  }
+
+  stopPolling() {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
+  }
+
   stop() {
     try {
       this.logger.info('Stopping pose detection');
       this.state.isActive = false;
-      
+
       poseService.stopPoseStream();
+      this.stopPolling();
       this.setConnectionState('disconnected');
       this.clearError();
       this.updateControls();
@@ -1325,7 +1367,7 @@ export class PoseDetectionCanvas {
       // Get current renderer config
       ...(this.renderer ? this.renderer.getConfig() : {}),
       // Add other relevant settings
-      currentZone: this.config.zoneId || 'zone_1',
+      currentZone: this.config.zoneId || 'room_1',
       maxFps: 30,
       autoReconnect: true,
       connectionTimeout: 10000

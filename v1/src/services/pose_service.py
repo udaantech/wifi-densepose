@@ -518,7 +518,7 @@ class PoseService:
 
             metadata = {
                 "timestamp": datetime.now().isoformat(),
-                "zone_ids": zone_ids or ["zone_1"],
+                "zone_ids": zone_ids or list(self.domain_config.zones.keys()) or ["room_1"],
                 "confidence_threshold": confidence_threshold or self.settings.pose_confidence_threshold,
                 "max_persons": max_persons or self.settings.pose_max_persons,
             }
