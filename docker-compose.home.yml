@@ -1,0 +1,110 @@
+# WiFi DensePose - Home Deployment Stack
+# 
+# Quick Start:
+#   docker compose -f docker-compose.home.yml up -d
+#
+# Access:
+#   - Web UI: http://localhost:3000
+#   - REST API: http://localhost:3000/api/v1/
+#   - WebSocket: ws://localhost:3001/ws/sensing
+
+version: "3.8"
+
+services:
+  # Main WiFi DensePose sensing server
+  wifi-densepose:
+    image: ruvnet/wifi-densepose:latest
+    container_name: wifi-densepose
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # HTTP API + Web UI
+      - "3001:3001"   # WebSocket streaming
+      - "5005:5005/udp"  # ESP32 CSI data
+    environment:
+      - RUST_LOG=info
+      - SOURCE=simulated  # Change to 'esp32' when using hardware
+    command: >
+      --source ${SOURCE:-simulated}
+      --http-port 3000
+      --ws-port 3001
+      --udp-port 5005
+      --tick-ms 50
+    networks:
+      - wifi-sensing
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: MQTT bridge for Home Assistant
+  mqtt-bridge:
+    image: eclipse-mosquitto:2
+    container_name: wifi-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mqtt/config:/mosquitto/config
+      - ./mqtt/data:/mosquitto/data
+      - ./mqtt/log:/mosquitto/log
+    networks:
+      - wifi-sensing
+    profiles: ["mqtt"]  # Only start with: docker compose --profile mqtt up
+
+  # Optional: Node-RED for visual automation
+  nodered:
+    image: nodered/node-red:latest
+    container_name: wifi-nodered
+    restart: unless-stopped
+    ports:
+      - "1880:1880"
+    volumes:
+      - ./nodered/data:/data
+    networks:
+      - wifi-sensing
+    profiles: ["automation"]
+
+  # Optional: InfluxDB for data logging
+  influxdb:
+    image: influxdb:2.7
+    container_name: wifi-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=wifisensing123
+      - DOCKER_INFLUXDB_INIT_ORG=home
+      - DOCKER_INFLUXDB_INIT_BUCKET=wifi_sensing
+    volumes:
+      - ./influxdb/data:/var/lib/influxdb2
+    networks:
+      - wifi-sensing
+    profiles: ["logging"]
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: wifi-grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=wifisensing123
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - wifi-sensing
+    profiles: ["logging"]
+    depends_on:
+      - influxdb
+
+networks:
+  wifi-sensing:
+    driver: bridge

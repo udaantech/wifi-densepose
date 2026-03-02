@@ -230,6 +230,70 @@ async def get_zones_config(
     }
 
 
+@router.post("/zones")
+async def add_zone(
+    zone_data: Dict[str, Any],
+    pose_service: PoseService = Depends(get_pose_service),
+    current_user: Optional[Dict] = Depends(get_current_user)
+):
+    """Add a new zone (room) to the configuration."""
+    from src.config.domains import get_domain_config, save_domain_config_to_file, DOMAIN_CONFIG_PATH, ZoneConfig, ZoneType
+
+    domain_config = get_domain_config()
+    zone_id = zone_data.get("zone_id")
+    if not zone_id:
+        raise HTTPException(status_code=400, detail="zone_id is required")
+    if zone_id in domain_config.zones:
+        raise HTTPException(status_code=409, detail=f"Zone '{zone_id}' already exists")
+
+    zone_type_str = zone_data.get("zone_type", "room")
+    try:
+        zone_type = ZoneType(zone_type_str)
+    except ValueError:
+        zone_type = ZoneType.ROOM
+
+    zone = ZoneConfig(
+        zone_id=zone_id,
+        name=zone_data.get("name", zone_id.replace("_", " ").title()),
+        zone_type=zone_type,
+        description=zone_data.get("description"),
+        x_min=zone_data.get("x_min", 0.0),
+        x_max=zone_data.get("x_max", 4.0),
+        y_min=zone_data.get("y_min", 0.0),
+        y_max=zone_data.get("y_max", 4.0),
+        z_min=zone_data.get("z_min", 0.0),
+        z_max=zone_data.get("z_max", 3.0),
+        enabled=zone_data.get("enabled", True),
+        confidence_threshold=zone_data.get("confidence_threshold", 0.7),
+        max_persons=zone_data.get("max_persons", 5),
+    )
+    domain_config.add_zone(zone)
+    save_domain_config_to_file(domain_config, DOMAIN_CONFIG_PATH)
+    logger.info(f"Zone '{zone_id}' added by user: {current_user.get('id') if current_user else 'anonymous'}")
+
+    return {"zone_id": zone_id, "name": zone.name, "status": "created", "total_zones": len(domain_config.zones)}
+
+
+@router.delete("/zones/{zone_id}")
+async def remove_zone(
+    zone_id: str,
+    pose_service: PoseService = Depends(get_pose_service),
+    current_user: Optional[Dict] = Depends(get_current_user)
+):
+    """Remove a zone (room) from the configuration."""
+    from src.config.domains import get_domain_config, save_domain_config_to_file, DOMAIN_CONFIG_PATH
+
+    domain_config = get_domain_config()
+    if zone_id not in domain_config.zones:
+        raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
+
+    del domain_config.zones[zone_id]
+    save_domain_config_to_file(domain_config, DOMAIN_CONFIG_PATH)
+    logger.info(f"Zone '{zone_id}' removed by user: {current_user.get('id') if current_user else 'anonymous'}")
+
+    return {"zone_id": zone_id, "status": "deleted", "total_zones": len(domain_config.zones)}
+
+
 @router.get("/zones/{zone_id}/occupancy")
 async def get_zone_occupancy(
     zone_id: str,

@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi DensePose - Home Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #161b22;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #30363d;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            color: #58a6ff;
+        }
+        
+        .header .status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #238636;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.disconnected {
+            background: #da3633;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .container {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        
+        .card h2 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #8b949e;
+            margin-bottom: 1rem;
+        }
+        
+        .metric {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+        
+        .metric-value {
+            font-size: 3rem;
+            font-weight: 600;
+            color: #58a6ff;
+        }
+        
+        .metric-unit {
+            font-size: 1rem;
+            color: #8b949e;
+        }
+        
+        .metric-label {
+            font-size: 0.875rem;
+            color: #6e7681;
+            margin-top: 0.25rem;
+        }
+        
+        .presence-indicator {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #0d1117;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+        
+        .presence-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .presence-icon.present {
+            background: rgba(35, 134, 54, 0.2);
+        }
+        
+        .presence-icon.empty {
+            background: rgba(139, 148, 158, 0.2);
+        }
+        
+        .presence-text {
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+        
+        .presence-text.present {
+            color: #3fb950;
+        }
+        
+        .presence-text.empty {
+            color: #8b949e;
+        }
+        
+        .chart-container {
+            height: 200px;
+            margin-top: 1rem;
+            background: #0d1117;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .chart-bar {
+            position: absolute;
+            bottom: 0;
+            width: 4px;
+            background: #58a6ff;
+            border-radius: 2px 2px 0 0;
+            transition: height 0.3s ease;
+        }
+        
+        .alert {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            background: rgba(218, 54, 51, 0.1);
+            border: 1px solid rgba(218, 54, 51, 0.3);
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+        
+        .alert-icon {
+            font-size: 1.25rem;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: #21262d;
+            color: #c9d1d9;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover {
+            background: #30363d;
+            border-color: #8b949e;
+        }
+        
+        .btn.active {
+            background: #1f6feb;
+            border-color: #58a6ff;
+        }
+        
+        .log {
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.75rem;
+            line-height: 1.5;
+            color: #8b949e;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: #0d1117;
+            border-radius: 8px;
+        }
+        
+        .log-entry {
+            padding: 0.125rem 0;
+        }
+        
+        .log-entry.event {
+            color: #3fb950;
+        }
+        
+        .log-entry.error {
+            color: #f85149;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .metric-value {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏠 WiFi DensePose - Home Monitor</h1>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="controls">
+            <button class="btn active" onclick="setMode('websocket')">WebSocket (Live)</button>
+            <button class="btn" onclick="setMode('polling')">REST Polling</button>
+            <button class="btn" onclick="connect()">Reconnect</button>
+        </div>
+        
+        <div class="grid">
+            <!-- Presence Card -->
+            <div class="card">
+                <h2>Room Occupancy</h2>
+                <div class="presence-indicator">
+                    <div class="presence-icon empty" id="presenceIcon">👤</div>
+                    <div>
+                        <div class="presence-text empty" id="presenceText">Empty</div>
+                        <div class="metric-label" id="presenceSubtext">No motion detected</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="motionChart"></div>
+            </div>
+            
+            <!-- Breathing Card -->
+            <div class="card">
+                <h2>Breathing Rate</h2>
+                <div class="metric">
+                    <span class="metric-value" id="breathingValue">--</span>
+                    <span class="metric-unit">BPM</span>
+                </div>
+                <div class="metric-label" id="breathingConfidence">Confidence: --%</div>
+                <div class="chart-container" id="breathingChart"></div>
+            </div>
+            
+            <!-- Heart Rate Card -->
+            <div class="card">
+                <h2>Heart Rate</h2>
+                <div class="metric">
+                    <span class="metric-value" id="heartValue">--</span>
+                    <span class="metric-unit">BPM</span>
+                </div>
+                <div class="metric-label" id="heartConfidence">Confidence: --%</div>
+                <div class="chart-container" id="heartChart"></div>
+            </div>
+            
+            <!-- Persons Card -->
+            <div class="card">
+                <h2>People Detected</h2>
+                <div class="metric">
+                    <span class="metric-value" id="personsValue">--</span>
+                    <span class="metric-unit">persons</span>
+                </div>
+                <div class="metric-label">Tracking 17 body keypoints</div>
+                <div id="alerts"></div>
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2>Event Log</h2>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+    
+    <script>
+        const WS_URL = 'ws://localhost:3001/ws/sensing';
+        const REST_URL = 'http://localhost:3000/api/v1';
+        
+        let ws = null;
+        let pollingInterval = null;
+        let mode = 'websocket';
+        let isConnected = false;
+        
+        // Data history for charts
+        const history = {
+            motion: new Array(50).fill(0),
+            breathing: new Array(50).fill(0),
+            heart: new Array(50).fill(0),
+        };
+        
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.insertBefore(entry, logEl.firstChild);
+            if (logEl.children.length > 50) {
+                logEl.removeChild(logEl.lastChild);
+            }
+        }
+        
+        function updateStatus(connected) {
+            isConnected = connected;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            if (connected) {
+                dot.classList.remove('disconnected');
+                text.textContent = mode === 'websocket' ? 'WebSocket Connected' : 'Polling Active';
+            } else {
+                dot.classList.add('disconnected');
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        function updateChart(containerId, data, color = '#58a6ff') {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            const max = Math.max(...data, 0.01);
+            const barWidth = container.offsetWidth / data.length;
+            
+            data.forEach((value, i) => {
+                const bar = document.createElement('div');
+                bar.className = 'chart-bar';
+                bar.style.left = `${i * barWidth}px`;
+                bar.style.width = `${barWidth - 1}px`;
+                bar.style.height = `${(value / max) * 100}%`;
+                bar.style.background = color;
+                container.appendChild(bar);
+            });
+        }
+        
+        function updatePresence(motionLevel, persons) {
+            const isPresent = motionLevel > 0.2 || persons > 0;
+            const icon = document.getElementById('presenceIcon');
+            const text = document.getElementById('presenceText');
+            const subtext = document.getElementById('presenceSubtext');
+            
+            if (isPresent) {
+                icon.className = 'presence-icon present';
+                text.className = 'presence-text present';
+                text.textContent = persons > 0 ? `${persons} Person${persons > 1 ? 's' : ''}` : 'Motion Detected';
+                subtext.textContent = `Motion: ${(motionLevel * 100).toFixed(1)}%`;
+            } else {
+                icon.className = 'presence-icon empty';
+                text.className = 'presence-text empty';
+                text.textContent = 'Empty';
+                subtext.textContent = 'No motion detected';
+            }
+        }
+        
+        function showAlert(message) {
+            const alerts = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = 'alert';
+            alert.innerHTML = `
+                <span class="alert-icon">⚠️</span>
+                <span>${message}</span>
+            `;
+            alerts.appendChild(alert);
+            setTimeout(() => alerts.removeChild(alert), 5000);
+        }
+        
+        function processData(data) {
+            const vitals = data.vital_signs || {};
+            const motionLevel = data.motion_level || 0;
+            const persons = (data.persons || []).length;
+            
+            // Update presence
+            updatePresence(motionLevel, persons);
+            document.getElementById('personsValue').textContent = persons;
+            
+            // Update vitals
+            if (vitals.breathing_bpm) {
+                document.getElementById('breathingValue').textContent = vitals.breathing_bpm.toFixed(1);
+                document.getElementById('breathingConfidence').textContent = 
+                    `Confidence: ${((vitals.breathing_confidence || 0) * 100).toFixed(0)}%`;
+                
+                history.breathing.push(vitals.breathing_bpm);
+                history.breathing.shift();
+                
+                // Alert on abnormal breathing
+                if (vitals.breathing_bpm < 6 || vitals.breathing_bpm > 30) {
+                    showAlert(`Abnormal breathing: ${vitals.breathing_bpm.toFixed(1)} BPM`);
+                    log(`Breathing alert: ${vitals.breathing_bpm.toFixed(1)} BPM`, 'error');
+                }
+            }
+            
+            if (vitals.heart_bpm) {
+                document.getElementById('heartValue').textContent = vitals.heart_bpm.toFixed(1);
+                document.getElementById('heartConfidence').textContent = 
+                    `Confidence: ${((vitals.heart_confidence || 0) * 100).toFixed(0)}%`;
+                
+                history.heart.push(vitals.heart_bpm);
+                history.heart.shift();
+            }
+            
+            // Update motion history
+            history.motion.push(motionLevel);
+            history.motion.shift();
+            
+            // Update charts
+            updateChart('motionChart', history.motion, '#3fb950');
+            updateChart('breathingChart', history.breathing, '#58a6ff');
+            updateChart('heartChart', history.heart, '#f85149');
+        }
+        
+        function connectWebSocket() {
+            log('Connecting to WebSocket...');
+            
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                updateStatus(true);
+                log('WebSocket connected', 'event');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    processData(data);
+                } catch (e) {
+                    log('Parse error: ' + e.message, 'error');
+                }
+            };
+            
+            ws.onclose = () => {
+                updateStatus(false);
+                log('WebSocket disconnected, retrying in 5s...', 'error');
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onerror = (err) => {
+                log('WebSocket error', 'error');
+            };
+        }
+        
+        function startPolling() {
+            log('Starting REST polling...');
+            updateStatus(true);
+            
+            async function poll() {
+                try {
+                    const [sensingRes, vitalsRes] = await Promise.all([
+                        fetch(`${REST_URL}/sensing/latest`),
+                        fetch(`${REST_URL}/vital-signs`),
+                    ]);
+                    
+                    const sensing = await sensingRes.json();
+                    const vitals = await vitalsRes.json();
+                    
+                    processData({
+                        ...sensing,
+                        vital_signs: vitals,
+                    });
+                } catch (e) {
+                    log('Polling error: ' + e.message, 'error');
+                    updateStatus(false);
+                }
+            }
+            
+            poll();
+            pollingInterval = setInterval(poll, 2000);
+        }
+        
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+        
+        function setMode(newMode) {
+            mode = newMode;
+            
+            document.querySelectorAll('.btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            connect();
+        }
+        
+        function connect() {
+            // Disconnect existing
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            stopPolling();
+            
+            // Connect with new mode
+            if (mode === 'websocket') {
+                connectWebSocket();
+            } else {
+                startPolling();
+            }
+        }
+        
+        // Start on load
+        connect();
+    </script>
+</body>
+</html>

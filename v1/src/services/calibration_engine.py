@@ -209,9 +209,15 @@ class CalibrationEngine:
 
     # Map room names to ZoneType enum values
     _ZONE_TYPE_MAP = {
+        "Hall": ZoneType.LIVING_ROOM,
         "Living Room": ZoneType.LIVING_ROOM,
+        "Master Bedroom": ZoneType.BEDROOM,
         "Bedroom": ZoneType.BEDROOM,
+        "Bedroom 2": ZoneType.BEDROOM,
+        "Bedroom 3": ZoneType.BEDROOM,
         "Kitchen": ZoneType.KITCHEN,
+        "Master Bathroom": ZoneType.BATHROOM,
+        "Common Bathroom": ZoneType.BATHROOM,
         "Bathroom": ZoneType.BATHROOM,
         "Hallway": ZoneType.HALLWAY,
     }

@@ -40,6 +40,8 @@ export const API_CONFIG = {
       ZONE_OCCUPANCY: '/api/v1/pose/zones/{zone_id}/occupancy',
       ZONES_SUMMARY: '/api/v1/pose/zones/summary',
       ZONES_CONFIG: '/api/v1/pose/zones/config',
+      ZONES_ADD: '/api/v1/pose/zones',
+      ZONES_DELETE: '/api/v1/pose/zones/{zone_id}',
       HISTORICAL: '/api/v1/pose/historical',
       ACTIVITIES: '/api/v1/pose/activities',
       CALIBRATE: '/api/v1/pose/calibrate',

@@ -469,6 +469,71 @@
   transform: translateX(16px);
 }
 
+/* Zone Management Header */
+.zone-mgmt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.zone-mgmt-header h3 { margin: 0; }
+.zone-mgmt-actions { display: flex; gap: 6px; }
+
+.zone-remove {
+  margin-left: auto;
+  padding: 2px 6px !important;
+  font-size: 11px !important;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+.zone-list-item:hover .zone-remove { opacity: 1; }
+
+.btn--xs {
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+/* Add Room Form */
+.zone-add-form {
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+  background: var(--color-card-bg);
+}
+.zone-add-form h4 {
+  margin: 0 0 10px 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.form-row label {
+  width: 90px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+.form-row input, .form-row select {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-card-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.form-actions {
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .settings-grid {

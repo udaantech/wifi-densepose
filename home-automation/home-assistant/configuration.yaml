@@ -1,0 +1,187 @@
+# WiFi DensePose Home Assistant Integration
+# 
+# Add this to your Home Assistant configuration.yaml
+# Then restart Home Assistant
+
+# REST sensors for WiFi DensePose API
+sensor:
+  # Vital signs
+  - platform: rest
+    name: "WiFi Breathing Rate"
+    resource: http://localhost:3000/api/v1/vital-signs
+    value_template: "{{ value_json.breathing_bpm | float(0) }}"
+    unit_of_measurement: "BPM"
+    device_class: frequency
+    scan_interval: 5
+
+  - platform: rest
+    name: "WiFi Heart Rate"
+    resource: http://localhost:3000/api/v1/vital-signs
+    value_template: "{{ value_json.heart_bpm | float(0) }}"
+    unit_of_measurement: "BPM"
+    device_class: heart_rate
+    scan_interval: 5
+
+  - platform: rest
+    name: "WiFi Motion Level"
+    resource: http://localhost:3000/api/v1/sensing/latest
+    value_template: "{{ value_json.motion_level | float(0) }}"
+    unit_of_measurement: "%"
+    scan_interval: 2
+
+  # Room presence
+  - platform: rest
+    name: "WiFi Persons Detected"
+    resource: http://localhost:3000/api/v1/pose/current
+    value_template: "{{ value_json.persons | length }}"
+    unit_of_measurement: "persons"
+    scan_interval: 3
+
+  # Confidence metrics
+  - platform: rest
+    name: "WiFi Breathing Confidence"
+    resource: http://localhost:3000/api/v1/vital-signs
+    value_template: "{{ value_json.breathing_confidence | float(0) }}"
+    unit_of_measurement: "%"
+    scan_interval: 5
+
+# Binary sensors for presence detection
+binary_sensor:
+  - platform: template
+    sensors:
+      wifi_room_occupied:
+        friendly_name: "Room Occupied (WiFi)"
+        value_template: >
+          {{ states('sensor.wifi_persons_detected') | int(0) > 0 or
+             states('sensor.wifi_motion_level') | float(0) > 0.2 }}
+        device_class: occupancy
+
+      wifi_breathing_normal:
+        friendly_name: "Breathing Normal"
+        value_template: >
+          {% set bpm = states('sensor.wifi_breathing_rate') | float(0) %}
+          {{ 8 <= bpm <= 25 }}
+        device_class: safety
+
+      wifi_fall_detected:
+        friendly_name: "Fall Detected (WiFi)"
+        value_template: >
+          {# Detect sudden change from standing to floor level #}
+          {% set motion = states('sensor.wifi_motion_level') | float(0) %}
+          {% set persons = states('sensor.wifi_persons_detected') | int(0) %}
+          {# High motion + person present = possible fall #}
+          {{ motion > 0.8 and persons > 0 }}
+        device_class: safety
+
+# WebSocket-based real-time sensor (requires custom integration)
+# For now, use REST polling above or the MQTT bridge
+
+# Automation triggers
+automation:
+  # Turn on lights when room occupied
+  - alias: "WiFi Auto Lights - On"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.wifi_room_occupied
+        to: "on"
+        for: "00:00:02"  # 2 second delay
+    condition:
+      - condition: sun
+        after: sunset
+        after_offset: "-00:30:00"
+    action:
+      - service: light.turn_on
+        target:
+          area_id: living_room  # Change to your area
+        data:
+          brightness_pct: 80
+          transition: 2
+
+  # Turn off lights when room empty
+  - alias: "WiFi Auto Lights - Off"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.wifi_room_occupied
+        to: "off"
+        for: "00:05:00"  # 5 minute timeout
+    action:
+      - service: light.turn_off
+        target:
+          area_id: living_room
+        data:
+          transition: 5
+
+  # Elderly care - abnormal breathing alert
+  - alias: "WiFi Breathing Alert"
+    trigger:
+      - platform: template
+        value_template: >
+          {% set bpm = states('sensor.wifi_breathing_rate') | float(0) %}
+          {{ bpm < 6 or bpm > 30 }}
+        for: "00:00:30"  # Sustained for 30 seconds
+    condition:
+      - condition: state
+        entity_id: binary_sensor.wifi_room_occupied
+        state: "on"
+    action:
+      - service: notify.notify
+        data:
+          title: "⚠️ Breathing Alert"
+          message: >
+            Abnormal breathing detected: 
+            {{ states('sensor.wifi_breathing_rate') }} BPM
+      - service: persistent_notification.create
+        data:
+          title: "WiFi Sensing Alert"
+          message: "Abnormal breathing pattern detected"
+
+  # Sleep mode detection
+  - alias: "WiFi Sleep Mode"
+    trigger:
+      - platform: template
+        value_template: >
+          {% set motion = states('sensor.wifi_motion_level') | float(0) %}
+          {% set bpm = states('sensor.wifi_breathing_rate') | float(0) %}
+          {# Low motion + steady breathing = sleeping #}
+          {{ motion < 0.1 and 10 <= bpm <= 20 }}
+        for: "00:10:00"  # 10 minutes
+    condition:
+      - condition: time
+        after: "20:00:00"
+        before: "08:00:00"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.bedtime  # Create this scene in HA
+      - service: climate.set_temperature
+        target:
+          entity_id: climate.bedroom
+        data:
+          temperature: 68
+
+# Input helpers for configuration
+input_number:
+  wifi_motion_threshold:
+    name: Motion Detection Threshold
+    min: 0
+    max: 1
+    step: 0.05
+    initial: 0.2
+
+  wifi_presence_timeout:
+    name: Presence Timeout (minutes)
+    min: 1
+    max: 30
+    step: 1
+    initial: 5
+
+# Scenes (create these in HA UI or define here)
+scene:
+  - name: Bedtime
+    entities:
+      light.bedroom_light:
+        state: off
+      light.living_room_light:
+        state: off
+      climate.bedroom:
+        temperature: 68

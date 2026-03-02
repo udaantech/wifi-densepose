@@ -32,12 +32,54 @@ export class SettingsTab {
       <div class="settings-grid">
         <!-- Zone Management -->
         <div class="settings-panel settings-zones">
-          <h3>Zone Management</h3>
+          <div class="zone-mgmt-header">
+            <h3>Zone Management</h3>
+            <div class="zone-mgmt-actions">
+              <button class="btn btn--primary btn--sm" id="settingsAddRoom">+ Add Room</button>
+            </div>
+          </div>
           <div class="zone-list" id="settingsZoneList">
             <div class="settings-empty">Loading zones...</div>
           </div>
           <div class="zone-detail" id="settingsZoneDetail">
             <div class="settings-empty">Select a zone to view details</div>
+          </div>
+          <!-- Add Room Form (hidden by default) -->
+          <div class="zone-add-form" id="settingsAddRoomForm" style="display:none;">
+            <h4>Add New Room</h4>
+            <div class="form-row">
+              <label>Name</label>
+              <input type="text" id="addRoomName" placeholder="e.g. Guest Room" />
+            </div>
+            <div class="form-row">
+              <label>Type</label>
+              <select id="addRoomType">
+                <option value="room">Room</option>
+                <option value="bedroom">Bedroom</option>
+                <option value="living_room">Living Room / Hall</option>
+                <option value="kitchen">Kitchen</option>
+                <option value="bathroom">Bathroom</option>
+                <option value="hallway">Hallway</option>
+                <option value="office">Office</option>
+                <option value="entrance">Entrance</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Width (m)</label>
+              <input type="number" id="addRoomWidth" value="4" min="1" max="20" step="0.5" />
+            </div>
+            <div class="form-row">
+              <label>Length (m)</label>
+              <input type="number" id="addRoomLength" value="4" min="1" max="20" step="0.5" />
+            </div>
+            <div class="form-row">
+              <label>Max Persons</label>
+              <input type="number" id="addRoomMaxPersons" value="5" min="1" max="20" />
+            </div>
+            <div class="form-row form-actions">
+              <button class="btn btn--primary btn--sm" id="addRoomSubmit">Add</button>
+              <button class="btn btn--secondary btn--sm" id="addRoomCancel">Cancel</button>
+            </div>
           </div>
         </div>
 
@@ -102,7 +144,9 @@ export class SettingsTab {
   }
 
   _bindEvents() {
-    // No rule editor buttons needed anymore
+    this.container.querySelector('#settingsAddRoom').addEventListener('click', () => this._showAddRoomForm());
+    this.container.querySelector('#addRoomCancel').addEventListener('click', () => this._hideAddRoomForm());
+    this.container.querySelector('#addRoomSubmit').addEventListener('click', () => this._submitAddRoom());
   }
 
   async _refreshAll() {
@@ -141,8 +185,10 @@ export class SettingsTab {
         <span class="zone-dot ${count > 0 ? 'active' : ''}"></span>
         <span class="zone-name">${roomConfigService.getLabel(zoneId)}</span>
         <span class="zone-count">${count} person${count !== 1 ? 's' : ''}</span>
+        <button class="btn btn--danger btn--xs zone-remove" title="Remove room">✕</button>
       `;
-      el.addEventListener('click', () => this._selectZone(zoneId));
+      el.querySelector('.zone-name').addEventListener('click', () => this._selectZone(zoneId));
+      el.querySelector('.zone-remove').addEventListener('click', (e) => { e.stopPropagation(); this._removeRoom(zoneId); });
       container.appendChild(el);
     }
   }
@@ -393,6 +439,56 @@ export class SettingsTab {
         this._refreshClients();
       });
       container.appendChild(el);
+    }
+  }
+
+  // --- Room Add/Remove ---
+  _showAddRoomForm() {
+    this.container.querySelector('#settingsAddRoomForm').style.display = '';
+  }
+
+  _hideAddRoomForm() {
+    this.container.querySelector('#settingsAddRoomForm').style.display = 'none';
+  }
+
+  async _submitAddRoom() {
+    const name = this.container.querySelector('#addRoomName').value.trim();
+    if (!name) return;
+
+    const zoneType = this.container.querySelector('#addRoomType').value;
+    const width = parseFloat(this.container.querySelector('#addRoomWidth').value) || 4;
+    const length = parseFloat(this.container.querySelector('#addRoomLength').value) || 4;
+    const maxPersons = parseInt(this.container.querySelector('#addRoomMaxPersons').value) || 5;
+    const zoneId = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+
+    try {
+      await poseService.addZone({
+        zone_id: zoneId,
+        name,
+        zone_type: zoneType,
+        description: `${name} (${(width * length).toFixed(0)}m²)`,
+        x_max: width,
+        y_max: length,
+        max_persons: maxPersons,
+      });
+      this._hideAddRoomForm();
+      this.container.querySelector('#addRoomName').value = '';
+      await roomConfigService.load(true);
+      await this._refreshZones();
+    } catch (e) {
+      console.error('Failed to add room:', e);
+    }
+  }
+
+  async _removeRoom(zoneId) {
+    if (!confirm(`Remove "${roomConfigService.getLabel(zoneId)}"? This cannot be undone.`)) return;
+    try {
+      await poseService.removeZone(zoneId);
+      if (this._selectedZone === zoneId) this._selectedZone = null;
+      await roomConfigService.load(true);
+      await this._refreshZones();
+    } catch (e) {
+      console.error('Failed to remove room:', e);
     }
   }
 

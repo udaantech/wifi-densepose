@@ -1,0 +1,14 @@
+# WiFi DensePose Home Monitor Dependencies
+
+# Core
+aiohttp>=3.9.0
+websockets>=12.0
+
+# Optional: MQTT support for Home Assistant
+paho-mqtt>=1.6.0
+
+# Optional: InfluxDB logging
+influxdb-client>=1.38.0
+
+# Optional: Web dashboard
+flask>=3.0.0

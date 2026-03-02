@@ -5,8 +5,22 @@ export class MockServer {
     this.endpoints = new Map();
     this.websockets = new Set();
     this.isRunning = false;
+    // Canonical zone list — all endpoints read from this
+    this._zones = [
+      { zone_id: 'hall', name: 'Hall', zone_type: 'living_room', description: 'Main hall / living area (35m²)', enabled: true, boundaries: { x_min: 0, x_max: 7, y_min: 0, y_max: 5, z_min: 0, z_max: 3 }, confidence_threshold: 0.7, max_persons: 8, calibration_data: null },
+      { zone_id: 'kitchen', name: 'Kitchen', zone_type: 'kitchen', description: 'Kitchen (12m²)', enabled: true, boundaries: { x_min: 0, x_max: 4, y_min: 0, y_max: 3, z_min: 0, z_max: 3 }, confidence_threshold: 0.72, max_persons: 4, calibration_data: null },
+      { zone_id: 'master_bedroom', name: 'Master Bedroom', zone_type: 'bedroom', description: 'Master bedroom (20m²)', enabled: true, boundaries: { x_min: 0, x_max: 5, y_min: 0, y_max: 4, z_min: 0, z_max: 3 }, confidence_threshold: 0.72, max_persons: 3, calibration_data: null },
+      { zone_id: 'bedroom_2', name: 'Bedroom 2', zone_type: 'bedroom', description: 'Second bedroom (14m²)', enabled: true, boundaries: { x_min: 0, x_max: 3.5, y_min: 0, y_max: 4, z_min: 0, z_max: 3 }, confidence_threshold: 0.72, max_persons: 3, calibration_data: null },
+      { zone_id: 'bedroom_3', name: 'Bedroom 3', zone_type: 'bedroom', description: 'Third bedroom (12m²)', enabled: true, boundaries: { x_min: 0, x_max: 3, y_min: 0, y_max: 4, z_min: 0, z_max: 3 }, confidence_threshold: 0.72, max_persons: 3, calibration_data: null },
+      { zone_id: 'bathroom_master', name: 'Master Bathroom', zone_type: 'bathroom', description: 'Attached master bathroom (6m²)', enabled: true, boundaries: { x_min: 0, x_max: 2, y_min: 0, y_max: 3, z_min: 0, z_max: 3 }, confidence_threshold: 0.75, max_persons: 2, calibration_data: null },
+      { zone_id: 'bathroom_common', name: 'Common Bathroom', zone_type: 'bathroom', description: 'Shared bathroom (5m²)', enabled: true, boundaries: { x_min: 0, x_max: 2, y_min: 0, y_max: 2.5, z_min: 0, z_max: 3 }, confidence_threshold: 0.75, max_persons: 2, calibration_data: null },
+      { zone_id: 'hallway', name: 'Hallway', zone_type: 'hallway', description: 'Connecting hallway (8m²)', enabled: true, boundaries: { x_min: 0, x_max: 1.5, y_min: 0, y_max: 5.5, z_min: 0, z_max: 3 }, confidence_threshold: 0.75, max_persons: 3, calibration_data: null },
+    ];
     this.setupDefaultEndpoints();
   }
+
+  /** Get zone_id list from canonical zones. */
+  get zoneIds() { return this._zones.map(z => z.zone_id); }
 
   // Set up default mock endpoints
   setupDefaultEndpoints() {
@@ -70,7 +84,7 @@ export class MockServer {
       name: 'WiFi-DensePose API',
       version: '1.0.0',
       environment: 'development',
-      zones: ['zone1', 'zone2', 'living-room'],
+      zones: this.zoneIds,
       routers: ['router-001', 'router-002'],
       features: {
         pose_estimation: true,
@@ -100,30 +114,69 @@ export class MockServer {
 
     // Pose endpoints
     this.addEndpoint('GET', '/api/v1/pose/current', () => {
-      const personCount = Math.floor(Math.random() * 3);
+      const activities = ['standing', 'sitting', 'walking', 'lying'];
+      const persons = [];
+      const zoneSummary = {};
+      // Each room has a 60% chance of having a person, some rooms may have 2
+      for (const zoneId of this.zoneIds) {
+        const count = Math.random() < 0.6 ? (Math.random() < 0.3 ? 2 : 1) : 0;
+        zoneSummary[zoneId] = count;
+        for (let i = 0; i < count; i++) {
+          persons.push({
+            person_id: `${zoneId}_person_${i}`,
+            confidence: Math.random() * 0.2 + 0.8,
+            bounding_box: { x: 100, y: 50, width: 120, height: 300 },
+            keypoints: this.generateMockKeypoints(),
+            zone_id: zoneId,
+            activity: activities[Math.floor(Math.random() * activities.length)]
+          });
+        }
+      }
       return {
         timestamp: new Date().toISOString(),
-        persons: this.generateMockPersons(personCount),
-        processing_time: Math.random() * 20 + 5,
-        zone_id: 'living-room',
+        frame_id: `frame_${Date.now()}`,
+        persons,
+        zone_summary: zoneSummary,
+        processing_time_ms: Math.random() * 20 + 5,
         total_detections: Math.floor(Math.random() * 10000)
       };
     });
 
-    this.addEndpoint('GET', '/api/v1/pose/zones/summary', () => ({
-      zones: {
-        'living_room': Math.floor(Math.random() * 2),
-        'bedroom': Math.floor(Math.random() * 2),
-        'kitchen': Math.floor(Math.random() * 2)
+    this.addEndpoint('GET', '/api/v1/pose/zones/summary', () => {
+      const zones = {};
+      for (const zid of this.zoneIds) {
+        zones[zid] = { occupancy: Math.floor(Math.random() * 2), max_occupancy: 10, status: Math.random() > 0.5 ? 'active' : 'inactive' };
       }
+      return { timestamp: new Date().toISOString(), total_persons: Object.values(zones).reduce((s, z) => s + z.occupancy, 0), zones, active_zones: Object.values(zones).filter(z => z.occupancy > 0).length };
+    });
+
+    // Zone configuration endpoint — provides room metadata for all tabs
+    this.addEndpoint('GET', '/api/v1/pose/zones/config', () => ({
+      zones: this._zones,
+      total: this._zones.length,
+      calibrated: this._zones.length > 0,
     }));
 
-    this.addEndpoint('GET', '/api/v1/pose/stats', () => ({
-      total_detections: Math.floor(Math.random() * 10000),
-      average_confidence: Math.random() * 0.4 + 0.6,
-      peak_persons: Math.floor(Math.random() * 5) + 1,
-      hours_analyzed: 24
-    }));
+    // Add zone
+    this.addEndpoint('POST', '/api/v1/pose/zones', (opts) => {
+      try {
+        const body = JSON.parse(opts.body || '{}');
+        if (!body.zone_id) return { error: 'zone_id required' };
+        if (this._zones.find(z => z.zone_id === body.zone_id)) return { error: 'zone already exists' };
+        const zone = { zone_id: body.zone_id, name: body.name || body.zone_id, zone_type: body.zone_type || 'room', description: body.description || '', enabled: true, boundaries: { x_min: 0, x_max: body.x_max || 4, y_min: 0, y_max: body.y_max || 4, z_min: 0, z_max: 3 }, confidence_threshold: body.confidence_threshold || 0.7, max_persons: body.max_persons || 5, calibration_data: null };
+        this._zones.push(zone);
+        return { zone_id: body.zone_id, name: zone.name, status: 'created', total_zones: this._zones.length };
+      } catch (e) { return { error: e.message }; }
+    });
+
+    // Delete zone
+    this.addDynamicEndpoint('DELETE', /^\/api\/v1\/pose\/zones\/([^/]+)$/, (match) => {
+      const zid = match[1];
+      const idx = this._zones.findIndex(z => z.zone_id === zid);
+      if (idx === -1) return { error: 'not found' };
+      this._zones.splice(idx, 1);
+      return { zone_id: zid, status: 'deleted', total_zones: this._zones.length };
+    });
 
     // Stream endpoints
     this.addEndpoint('GET', '/api/v1/stream/status', () => ({
@@ -162,10 +215,10 @@ export class MockServer {
 
     this.addEndpoint('GET', '/api/v1/alerts/rules', () => ({
       rules: [
-        { id: 'rule_intrusion', name: 'Intrusion Detection', alert_type: 'intrusion', zone_ids: ['hallway', 'living_room'], enabled: true, severity: 'critical', conditions: { trigger: 'person_detected', schedule: 'away' } },
-        { id: 'rule_fall', name: 'Fall Detection', alert_type: 'fall_detected', zone_ids: ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'], enabled: true, severity: 'critical', conditions: { activity: 'falling' } },
-        { id: 'rule_zone', name: 'Restricted Zone', alert_type: 'zone_violation', zone_ids: ['kitchen'], enabled: false, severity: 'warning', conditions: { trigger: 'person_detected', schedule: 'night' } },
-        { id: 'rule_occupancy', name: 'Occupancy Change', alert_type: 'occupancy_change', zone_ids: ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'], enabled: true, severity: 'info', conditions: { trigger: 'occupancy_change' } }
+        { id: 'rule_intrusion', name: 'Intrusion Detection', alert_type: 'intrusion', zone_ids: this.zoneIds.filter(z => ['hallway', 'hall'].includes(z)), enabled: true, severity: 'critical', conditions: { trigger: 'person_detected', schedule: 'away' } },
+        { id: 'rule_fall', name: 'Fall Detection', alert_type: 'fall_detected', zone_ids: this.zoneIds, enabled: true, severity: 'critical', conditions: { activity: 'falling' } },
+        { id: 'rule_zone', name: 'Restricted Zone', alert_type: 'zone_violation', zone_ids: this.zoneIds.filter(z => z.includes('kitchen')), enabled: false, severity: 'warning', conditions: { trigger: 'person_detected', schedule: 'night' } },
+        { id: 'rule_occupancy', name: 'Occupancy Change', alert_type: 'occupancy_change', zone_ids: this.zoneIds, enabled: true, severity: 'info', conditions: { trigger: 'occupancy_change' } }
       ]
     }));
 
@@ -228,6 +281,41 @@ export class MockServer {
       buffer_size: Math.floor(Math.random() * 100)
     }));
 
+    // Single alert acknowledge
+    this.addDynamicEndpoint('POST', /^\/api\/v1\/alerts\/acknowledge\/([^/]+)$/, (match) => ({
+      alert_id: match[1],
+      acknowledged: true,
+      acknowledged_at: new Date().toISOString()
+    }));
+
+    // Single alert rule update
+    this.addDynamicEndpoint('PUT', /^\/api\/v1\/alerts\/rules\/([^/]+)$/, (match) => ({
+      rule_id: match[1],
+      updated: true
+    }));
+
+    // Calibration endpoints
+    this.addEndpoint('POST', '/api/v1/pose/calibrate', () => ({
+      status: 'started',
+      message: 'Calibration process initiated',
+      phases: ['baseline', 'zone_mapping', 'presence', 'validation'],
+      current_phase: 0
+    }));
+
+    this.addEndpoint('GET', '/api/v1/pose/calibration/status', () => ({
+      status: 'idle',
+      current_phase: null,
+      progress: 0,
+      zones_calibrated: 5,
+      last_calibrated: new Date().toISOString()
+    }));
+
+    // Stream client disconnect
+    this.addDynamicEndpoint('DELETE', /^\/api\/v1\/stream\/clients\/([^/]+)$/, (match) => ({
+      client_id: match[1],
+      disconnected: true
+    }));
+
     // Alert evaluate endpoint
     this.addEndpoint('POST', '/api/v1/alerts/evaluate', () => ({
       alerts_triggered: Math.random() > 0.5 ? [
@@ -257,7 +345,7 @@ export class MockServer {
 
   // Generate mock activities
   generateMockActivities() {
-    const zones = ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'];
+    const zones = this.zoneIds;
     const activities = ['standing', 'sitting', 'walking', 'lying', 'running', 'falling'];
     const weights = [0.3, 0.25, 0.2, 0.1, 0.1, 0.05]; // weighted distribution
     const result = [];
@@ -282,7 +370,7 @@ export class MockServer {
 
   // Generate mock alerts
   generateMockAlerts() {
-    const zones = ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'];
+    const zones = this.zoneIds;
     const types = [
       { type: 'intrusion', severity: 'critical', title: 'Intrusion Detected', msg: 'Person detected in' },
       { type: 'fall_detected', severity: 'critical', title: 'Fall Detected', msg: 'Person may have fallen in' },
@@ -312,6 +400,8 @@ export class MockServer {
 
   // Generate mock person data
   generateMockPersons(count) {
+    const zones = this.zoneIds;
+    const activities = ['standing', 'sitting', 'walking', 'lying'];
     const persons = [];
     for (let i = 0; i < count; i++) {
       persons.push({
@@ -324,47 +414,49 @@ export class MockServer {
           height: Math.random() * 150 + 100
         },
         keypoints: this.generateMockKeypoints(),
-        zone_id: `zone${Math.floor(Math.random() * 3) + 1}`
+        zone_id: zones[Math.floor(Math.random() * zones.length)],
+        activity: activities[Math.floor(Math.random() * activities.length)]
       });
     }
     return persons;
   }
 
   // Generate mock keypoints (COCO format)
+  // Coordinates are in 800x600 space; PoseRenderer scales via (x/800)*canvasW
   generateMockKeypoints() {
     const keypoints = [];
-    // Generate keypoints in a rough human pose shape
-    const centerX = Math.random() * 600 + 100;
-    const centerY = Math.random() * 400 + 100;
-    
+    // Center the skeleton in the 800x600 coordinate space with slight random offset
+    const centerX = 400 + (Math.random() - 0.5) * 160;
+    const centerY = 280 + (Math.random() - 0.5) * 40;
+
     // COCO keypoint order: nose, left_eye, right_eye, left_ear, right_ear,
     // left_shoulder, right_shoulder, left_elbow, right_elbow, left_wrist, right_wrist,
     // left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle
     const offsets = [
-      [0, -80],     // nose
-      [-10, -90],   // left_eye
-      [10, -90],    // right_eye
-      [-20, -85],   // left_ear
-      [20, -85],    // right_ear
-      [-40, -40],   // left_shoulder
-      [40, -40],    // right_shoulder
-      [-60, 10],    // left_elbow
-      [60, 10],     // right_elbow
-      [-65, 60],    // left_wrist
-      [65, 60],     // right_wrist
-      [-20, 60],    // left_hip
-      [20, 60],     // right_hip
-      [-25, 120],   // left_knee
-      [25, 120],    // right_knee
-      [-25, 180],   // left_ankle
-      [25, 180]     // right_ankle
+      [0, -100],    // nose
+      [-12, -112],  // left_eye
+      [12, -112],   // right_eye
+      [-24, -106],  // left_ear
+      [24, -106],   // right_ear
+      [-50, -50],   // left_shoulder
+      [50, -50],    // right_shoulder
+      [-75, 15],    // left_elbow
+      [75, 15],     // right_elbow
+      [-80, 75],    // left_wrist
+      [80, 75],     // right_wrist
+      [-25, 75],    // left_hip
+      [25, 75],     // right_hip
+      [-30, 155],   // left_knee
+      [30, 155],    // right_knee
+      [-30, 230],   // left_ankle
+      [30, 230]     // right_ankle
     ];
-    
+
     for (let i = 0; i < 17; i++) {
       keypoints.push({
-        x: centerX + offsets[i][0] + (Math.random() - 0.5) * 10,
-        y: centerY + offsets[i][1] + (Math.random() - 0.5) * 10,
-        confidence: Math.random() * 0.3 + 0.7
+        x: centerX + offsets[i][0] + (Math.random() - 0.5) * 8,
+        y: centerY + offsets[i][1] + (Math.random() - 0.5) * 8,
+        confidence: Math.random() * 0.15 + 0.85
       });
     }
     return keypoints;
@@ -535,23 +627,31 @@ export class MockServer {
         
         // Send periodic pose data if this is a pose stream
         if (this.url.includes('/stream/pose')) {
+          const wsZones = mockServer.zoneIds;
+          const wsActivities = ['standing', 'sitting', 'walking', 'lying'];
           this.poseInterval = setInterval(() => {
             if (this.readyState === WebSocket.OPEN) {
-              const personCount = Math.floor(Math.random() * 3);
-              const persons = mockServer.generateMockPersons(personCount);
-              
-              // Match the backend format exactly
+              const zoneId = wsZones[Math.floor(Math.random() * wsZones.length)];
+              const personCount = Math.random() < 0.6 ? (Math.random() < 0.3 ? 2 : 1) : 0;
+              const persons = [];
+              for (let i = 0; i < personCount; i++) {
+                persons.push({
+                  person_id: `${zoneId}_person_${i}`,
+                  confidence: Math.random() * 0.2 + 0.8,
+                  keypoints: mockServer.generateMockKeypoints(),
+                  zone_id: zoneId,
+                  activity: wsActivities[Math.floor(Math.random() * wsActivities.length)]
+                });
+              }
               this.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
                   type: 'pose_data',
                   timestamp: new Date().toISOString(),
-                  zone_id: 'living_room',
+                  zone_id: zoneId,
                   data: {
-                    pose: {
-                      persons: persons
-                    },
-                    confidence: Math.random() * 0.3 + 0.7,
-                    activity: Math.random() > 0.5 ? 'standing' : 'walking'
+                    pose: { persons },
+                    confidence: Math.random() * 0.2 + 0.8,
+                    activity: wsActivities[Math.floor(Math.random() * wsActivities.length)]
                   },
                   metadata: {
                     frame_id: `frame_${Date.now()}`,
@@ -562,18 +662,20 @@ export class MockServer {
             }
           }, 1000);
         }
-        
+
         // Send periodic events if this is an event stream
         if (this.url.includes('/stream/events')) {
+          const evtZones = mockServer.zoneIds;
+          const evtTypes = ['zone_entry', 'zone_exit', 'activity_change'];
           this.eventInterval = setInterval(() => {
             if (this.readyState === WebSocket.OPEN && Math.random() > 0.7) {
               this.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
                   type: 'system_event',
                   payload: {
-                    event_type: 'zone_entry',
-                    zone_id: 'zone1',
-                    person_id: 'person_0',
+                    event_type: evtTypes[Math.floor(Math.random() * evtTypes.length)],
+                    zone_id: evtZones[Math.floor(Math.random() * evtZones.length)],
+                    person_id: `person_${Math.floor(Math.random() * 4)}`,
                     timestamp: new Date().toISOString()
                   }
                 })

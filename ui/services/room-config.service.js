@@ -13,13 +13,14 @@ class RoomConfigService {
     this._subscribers = [];
   }
 
-  /** Load room config from API. Safe to call multiple times. */
-  async load() {
-    if (this._loaded) return this._rooms;
+  /** Load room config from API. Safe to call multiple times. Pass force=true to reload. */
+  async load(force = false) {
+    if (this._loaded && !force) return this._rooms;
     if (this._loading) return this._loading;
     this._loading = this._fetch();
     const rooms = await this._loading;
     this._loading = null;
+    if (force) this._notifySubscribers();
     return rooms;
   }
 

@@ -81,6 +81,17 @@ export class PoseService {
     return apiService.get(API_CONFIG.ENDPOINTS.POSE.ZONES_CONFIG);
   }
 
+  // Add a new zone (room)
+  async addZone(zoneData) {
+    return apiService.post(API_CONFIG.ENDPOINTS.POSE.ZONES_ADD, zoneData);
+  }
+
+  // Remove a zone (room)
+  async removeZone(zoneId) {
+    const endpoint = API_CONFIG.ENDPOINTS.POSE.ZONES_DELETE.replace('{zone_id}', zoneId);
+    return apiService.delete(endpoint);
+  }
+
   // Get historical data (requires auth)
   async getHistoricalData(request) {
     return apiService.post(API_CONFIG.ENDPOINTS.POSE.HISTORICAL, request);

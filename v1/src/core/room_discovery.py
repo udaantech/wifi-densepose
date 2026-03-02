@@ -21,46 +21,76 @@ logger = logging.getLogger(__name__)
 
 # Physics-based room profiles for a typical house.
 # Each profile defines how WiFi signals behave in that room type.
+# A realistic house has 1 hall, 1 kitchen, multiple bedrooms, multiple
+# bathrooms, and a hallway.  Add or remove entries here to match your
+# actual floor plan — calibration will auto-discover exactly these rooms.
 ROOM_PROFILES: Dict[str, Dict[str, Any]] = {
-    "living_room": {
-        "name": "Living Room",
-        "dimensions": (5.0, 6.0, 3.0),  # meters (x, y, z)
-        "path_loss_factor": 0.85,  # large open room → less attenuation
-        "multipath_variance": 0.45,  # furniture reflections
-        "antenna_correlation": 0.60,  # medium spatial correlation
-        "noise_multiplier": 0.06,  # drywall, open space
-        "wall_material": "drywall",
-    },
-    "bedroom": {
-        "name": "Bedroom",
-        "dimensions": (4.0, 4.0, 3.0),
-        "path_loss_factor": 0.75,
-        "multipath_variance": 0.30,
-        "antenna_correlation": 0.65,
-        "noise_multiplier": 0.07,
+    "hall": {
+        "name": "Hall",
+        "dimensions": (7.0, 5.0, 3.0),  # large open living area
+        "path_loss_factor": 0.85,
+        "multipath_variance": 0.45,
+        "antenna_correlation": 0.60,
+        "noise_multiplier": 0.06,
         "wall_material": "drywall",
     },
     "kitchen": {
         "name": "Kitchen",
-        "dimensions": (3.0, 4.0, 3.0),
+        "dimensions": (4.0, 3.0, 3.0),
         "path_loss_factor": 0.70,
         "multipath_variance": 0.50,  # appliances create many reflections
         "antenna_correlation": 0.50,  # metal surfaces scatter signal
         "noise_multiplier": 0.10,  # appliance interference
         "wall_material": "mixed",
     },
-    "bathroom": {
-        "name": "Bathroom",
+    "master_bedroom": {
+        "name": "Master Bedroom",
+        "dimensions": (5.0, 4.0, 3.0),
+        "path_loss_factor": 0.78,
+        "multipath_variance": 0.32,
+        "antenna_correlation": 0.65,
+        "noise_multiplier": 0.07,
+        "wall_material": "drywall",
+    },
+    "bedroom_2": {
+        "name": "Bedroom 2",
+        "dimensions": (3.5, 4.0, 3.0),
+        "path_loss_factor": 0.75,
+        "multipath_variance": 0.28,
+        "antenna_correlation": 0.66,
+        "noise_multiplier": 0.07,
+        "wall_material": "drywall",
+    },
+    "bedroom_3": {
+        "name": "Bedroom 3",
+        "dimensions": (3.0, 4.0, 3.0),
+        "path_loss_factor": 0.73,
+        "multipath_variance": 0.26,
+        "antenna_correlation": 0.67,
+        "noise_multiplier": 0.07,
+        "wall_material": "drywall",
+    },
+    "bathroom_master": {
+        "name": "Master Bathroom",
         "dimensions": (2.0, 3.0, 3.0),
-        "path_loss_factor": 0.55,  # small enclosed room
+        "path_loss_factor": 0.55,
         "multipath_variance": 0.15,  # tiles reflect uniformly
         "antenna_correlation": 0.85,  # enclosed → high correlation
         "noise_multiplier": 0.12,  # tile + water pipes
         "wall_material": "tile",
     },
+    "bathroom_common": {
+        "name": "Common Bathroom",
+        "dimensions": (2.0, 2.5, 3.0),
+        "path_loss_factor": 0.52,
+        "multipath_variance": 0.14,
+        "antenna_correlation": 0.87,
+        "noise_multiplier": 0.13,
+        "wall_material": "tile",
+    },
     "hallway": {
         "name": "Hallway",
-        "dimensions": (1.5, 6.0, 3.0),
+        "dimensions": (1.5, 5.5, 3.0),
         "path_loss_factor": 0.65,
         "multipath_variance": 0.10,  # narrow → waveguide-like
         "antenna_correlation": 0.40,  # elongated → low correlation
