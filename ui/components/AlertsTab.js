@@ -1,15 +1,20 @@
-// Security Alerts Tab Component
+// Security Alerts Tab — Full alert management + rule editor
 
 import { alertService } from '../services/alert.service.js';
+import { poseService } from '../services/pose.service.js';
+import { roomConfigService } from '../services/room-config.service.js';
 
 export class AlertsTab {
   constructor(container) {
     this.container = container;
     this._pollInterval = null;
     this._currentFilter = { severity: null, zone_id: null, acknowledged: null };
+    this._rules = [];
+    this._editingRule = null;
   }
 
   async init() {
+    await roomConfigService.load();
     this._buildDOM();
     this._bindEvents();
     await this._refresh();
@@ -51,11 +56,6 @@ export class AlertsTab {
           </select>
           <select id="alertZoneFilter" class="alert-select">
             <option value="">All Zones</option>
-            <option value="living_room">Living Room</option>
-            <option value="bedroom">Bedroom</option>
-            <option value="kitchen">Kitchen</option>
-            <option value="bathroom">Bathroom</option>
-            <option value="hallway">Hallway</option>
           </select>
           <select id="alertAckFilter" class="alert-select">
             <option value="">All Status</option>
@@ -75,10 +75,35 @@ export class AlertsTab {
         <div class="alerts-empty">No alerts yet. The system is monitoring all rooms.</div>
       </div>
 
-      <!-- Alert Rules -->
+      <!-- Alert Rules Configuration -->
       <div class="alerts-rules-section">
-        <h3>Alert Rules</h3>
+        <h3>Alert Rules Configuration</h3>
         <div class="alerts-rules" id="alertRules"></div>
+
+        <!-- Rule Editor (hidden by default) -->
+        <div class="rule-editor" id="alertRuleEditor" style="display:none;">
+          <h4 id="ruleEditorTitle">Edit Rule</h4>
+          <div class="rule-form">
+            <div class="form-row">
+              <label>Severity</label>
+              <select id="ruleEditSeverity" class="alert-select">
+                <option value="info">Info</option>
+                <option value="warning">Warning</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Monitored Zones</label>
+              <div class="zone-checkboxes" id="ruleEditZones"></div>
+            </div>
+            <div class="form-row rule-actions">
+              <button id="ruleEditSave" class="btn btn--primary btn--sm">Save Changes</button>
+              <button id="ruleEditCancel" class="btn btn--secondary btn--sm">Cancel</button>
+              <button id="ruleEditTest" class="btn btn--secondary btn--sm">Test Rule</button>
+            </div>
+            <div class="rule-test-result" id="ruleTestResult" style="display:none;"></div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -108,6 +133,26 @@ export class AlertsTab {
     this.container.querySelector('#btnRefreshAlerts').addEventListener('click', () => {
       this._refresh();
     });
+
+    // Rule editor buttons
+    this.container.querySelector('#ruleEditSave').addEventListener('click', () => this._saveRule());
+    this.container.querySelector('#ruleEditCancel').addEventListener('click', () => this._cancelRuleEdit());
+    this.container.querySelector('#ruleEditTest').addEventListener('click', () => this._testRule());
+
+    // Populate zone filter dropdown dynamically
+    this._populateZoneFilter();
+  }
+
+  _populateZoneFilter() {
+    const select = this.container.querySelector('#alertZoneFilter');
+    if (!select) return;
+    while (select.options.length > 1) select.remove(1);
+    for (const zoneId of roomConfigService.order) {
+      const opt = document.createElement('option');
+      opt.value = zoneId;
+      opt.textContent = roomConfigService.getLabel(zoneId);
+      select.appendChild(opt);
+    }
   }
 
   async _refresh() {
@@ -168,7 +213,7 @@ export class AlertsTab {
 
       const zone = document.createElement('span');
       zone.className = 'alert-item-zone';
-      zone.textContent = alert.zone_id.replace(/_/g, ' ');
+      zone.textContent = roomConfigService.getLabel(alert.zone_id);
 
       const ts = document.createElement('span');
       ts.className = 'alert-item-time';
@@ -209,12 +254,15 @@ export class AlertsTab {
     }
   }
 
+  // --- Alert Rules ---
+
   async _refreshRules() {
     try {
       const data = await alertService.getRules();
-      this._renderRules(data.rules || []);
+      this._rules = data.rules || [];
+      this._renderRules(this._rules);
     } catch (e) {
-      // silent
+      this._rules = [];
     }
   }
 
@@ -226,8 +274,14 @@ export class AlertsTab {
       const el = document.createElement('div');
       el.className = `rule-item ${rule.enabled ? 'enabled' : 'disabled'}`;
 
+      const zonesText = rule.zone_ids.map(z => roomConfigService.getLabel(z)).join(', ');
+      const condText = rule.conditions ? Object.entries(rule.conditions).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
+
       const header = document.createElement('div');
       header.className = 'rule-header';
+
+      const info = document.createElement('div');
+      info.className = 'rule-info';
 
       const name = document.createElement('span');
       name.className = 'rule-name';
@@ -237,9 +291,14 @@ export class AlertsTab {
       severity.className = `alert-badge severity-${rule.severity}`;
       severity.textContent = rule.severity.toUpperCase();
 
+      info.appendChild(name);
+      info.appendChild(severity);
+
+      const controls = document.createElement('div');
+      controls.className = 'rule-controls';
+
       const toggle = document.createElement('label');
       toggle.className = 'rule-toggle';
-
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = rule.enabled;
@@ -247,34 +306,114 @@ export class AlertsTab {
         await alertService.updateRule(rule.id, { enabled: checkbox.checked });
         this._refreshRules();
       });
-
       const slider = document.createElement('span');
       slider.className = 'toggle-slider';
-
       toggle.appendChild(checkbox);
       toggle.appendChild(slider);
 
-      header.appendChild(name);
-      header.appendChild(severity);
-      header.appendChild(toggle);
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn--sm btn--secondary';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => this._editRule(rule));
+
+      controls.appendChild(toggle);
+      controls.appendChild(editBtn);
+
+      header.appendChild(info);
+      header.appendChild(controls);
 
       const details = document.createElement('div');
       details.className = 'rule-details';
 
       const zones = document.createElement('span');
       zones.className = 'rule-zones';
-      zones.textContent = 'Zones: ' + rule.zone_ids.map(z => z.replace(/_/g, ' ')).join(', ');
+      zones.textContent = 'Zones: ' + zonesText;
 
       const type = document.createElement('span');
       type.className = 'rule-type';
       type.textContent = 'Type: ' + rule.alert_type.replace(/_/g, ' ');
 
       details.appendChild(zones);
-      details.appendChild(type);
+      if (condText) {
+        const cond = document.createElement('span');
+        cond.className = 'rule-conditions';
+        cond.textContent = 'Conditions: ' + condText;
+        details.appendChild(cond);
+      }
 
       el.appendChild(header);
       el.appendChild(details);
       container.appendChild(el);
+    }
+  }
+
+  _editRule(rule) {
+    this._editingRule = rule;
+    const editor = this.container.querySelector('#alertRuleEditor');
+    editor.style.display = 'block';
+
+    this.container.querySelector('#ruleEditorTitle').textContent = `Edit: ${rule.name}`;
+    this.container.querySelector('#ruleEditSeverity').value = rule.severity;
+
+    // Build zone checkboxes
+    const zonesContainer = this.container.querySelector('#ruleEditZones');
+    zonesContainer.innerHTML = '';
+    for (const z of roomConfigService.order) {
+      const label = document.createElement('label');
+      label.className = 'zone-checkbox';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = z;
+      cb.checked = rule.zone_ids.includes(z);
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + roomConfigService.getLabel(z)));
+      zonesContainer.appendChild(label);
+    }
+
+    this.container.querySelector('#ruleTestResult').style.display = 'none';
+  }
+
+  async _saveRule() {
+    if (!this._editingRule) return;
+
+    const severity = this.container.querySelector('#ruleEditSeverity').value;
+    const checkboxes = this.container.querySelectorAll('#ruleEditZones input[type=checkbox]:checked');
+    const zone_ids = Array.from(checkboxes).map(cb => cb.value);
+
+    await alertService.updateRule(this._editingRule.id, { severity, zone_ids });
+    this._cancelRuleEdit();
+    await this._refreshRules();
+  }
+
+  _cancelRuleEdit() {
+    this._editingRule = null;
+    this.container.querySelector('#alertRuleEditor').style.display = 'none';
+  }
+
+  async _testRule() {
+    if (!this._editingRule) return;
+    const resultEl = this.container.querySelector('#ruleTestResult');
+    resultEl.style.display = 'block';
+    resultEl.textContent = 'Testing rule...';
+    resultEl.className = 'rule-test-result';
+
+    try {
+      const pose = await poseService.getCurrentPose();
+      const persons = pose?.persons || [];
+      const zoneId = this._editingRule.zone_ids[0] || 'living_room';
+
+      const response = await alertService.evaluate({ zone_id: zoneId, persons });
+      const triggered = response?.alerts_triggered || response?.alerts || [];
+      if (triggered.length > 0) {
+        resultEl.textContent = `Rule triggered! ${triggered.length} alert(s) generated.`;
+        resultEl.className = 'rule-test-result triggered';
+      } else {
+        resultEl.textContent = 'Rule did not trigger with current data.';
+        resultEl.className = 'rule-test-result not-triggered';
+      }
+    } catch (e) {
+      resultEl.textContent = 'Test failed: ' + e.message;
+      resultEl.className = 'rule-test-result error';
     }
   }
 

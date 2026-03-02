@@ -219,9 +219,22 @@
 
 .rule-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 10px;
   margin-bottom: 6px;
+}
+
+.rule-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rule-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .rule-name {
@@ -280,8 +293,84 @@
   color: var(--color-text-secondary);
 }
 
-.rule-zones, .rule-type {
+.rule-zones, .rule-type, .rule-conditions {
   text-transform: capitalize;
+}
+
+/* Rule Editor */
+.rule-editor {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: rgba(33, 128, 141, 0.04);
+}
+
+.rule-editor h4 {
+  margin: 0 0 12px 0;
+  font-size: var(--font-size-base);
+  color: var(--color-primary);
+}
+
+.rule-form .form-row {
+  margin-bottom: 12px;
+}
+
+.rule-form label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.zone-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.zone-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.zone-checkbox input { cursor: pointer; }
+
+.rule-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rule-test-result {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  background: var(--color-secondary);
+  color: var(--color-text);
+}
+
+.rule-test-result.triggered {
+  background: rgba(var(--color-warning-rgb), 0.1);
+  color: var(--color-warning);
+  border: 1px solid rgba(var(--color-warning-rgb), 0.3);
+}
+
+.rule-test-result.not-triggered {
+  background: rgba(var(--color-success-rgb), 0.1);
+  color: var(--color-success);
+  border: 1px solid rgba(var(--color-success-rgb), 0.3);
+}
+
+.rule-test-result.error {
+  background: rgba(var(--color-error-rgb), 0.1);
+  color: var(--color-error);
+  border: 1px solid rgba(var(--color-error-rgb), 0.3);
 }
 
 /* Responsive */

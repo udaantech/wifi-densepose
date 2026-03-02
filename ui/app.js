@@ -3,7 +3,6 @@
 import { TabManager } from './components/TabManager.js';
 import { DashboardTab } from './components/DashboardTab.js';
 import { LiveDemoTab } from './components/LiveDemoTab.js';
-import { SensingTab } from './components/SensingTab.js';
 import { CalibrationTab } from './components/CalibrationTab.js';
 import { AlertsTab } from './components/AlertsTab.js';
 import { SettingsTab } from './components/SettingsTab.js';
@@ -126,12 +125,6 @@ class WiFiDensePoseApp {
       this.components.demo.init();
     }
 
-    // Sensing tab
-    const sensingContainer = document.getElementById('sensing');
-    if (sensingContainer) {
-      this.components.sensing = new SensingTab(sensingContainer);
-    }
-
     // Calibration tab
     const calibrationContainer = document.getElementById('calibration');
     if (calibrationContainer) {
@@ -167,13 +160,8 @@ class WiFiDensePoseApp {
         // Demo starts manually
         break;
 
-      case 'sensing':
-        // Lazy-init sensing tab on first visit
-        if (this.components.sensing && !this.components.sensing.splatRenderer) {
-          this.components.sensing.init().catch(error => {
-            console.error('Failed to initialize sensing tab:', error);
-          });
-        }
+      case 'settings':
+        // Settings tab auto-refreshes
         break;
     }
   }

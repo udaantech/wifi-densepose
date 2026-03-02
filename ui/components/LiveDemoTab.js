@@ -1,893 +1,265 @@
-// Live Demo Tab Component - Enhanced Version
+// Live View Tab — Multi-room pose detection display
 
-import { PoseDetectionCanvas } from './PoseDetectionCanvas.js';
 import { poseService } from '../services/pose.service.js';
-import { streamService } from '../services/stream.service.js';
-import { wsService } from '../services/websocket.service.js';
+import { PoseRenderer } from '../utils/pose-renderer.js';
+import { roomConfigService } from '../services/room-config.service.js';
 
 export class LiveDemoTab {
   constructor(containerElement) {
     this.container = containerElement;
     this.state = {
       isActive: false,
-      connectionState: 'disconnected',
-      currentZone: 'living_room',
-      debugMode: false,
-      autoReconnect: true,
-      renderMode: 'skeleton'
-    };
-    
-    this.components = {
-      poseCanvas: null,
-      settingsPanel: null
-    };
-    
-    this.metrics = {
-      startTime: null,
       frameCount: 0,
-      errorCount: 0,
-      lastUpdate: null,
-      connectionAttempts: 0
+      startTime: null,
     };
-    
-    this.subscriptions = [];
-    this.logger = this.createLogger();
-    
-    // Configuration
-    this.config = {
-      defaultZone: 'living_room',
-      reconnectDelay: 3000,
-      healthCheckInterval: 10000,
-      maxConnectionAttempts: 5,
-      enablePerformanceMonitoring: true
-    };
+    this._pollInterval = null;
+    this._uiUpdateInterval = null;
+    this._roomRenderers = {}; // zoneId -> { canvas, renderer, persons }
   }
 
-  createLogger() {
-    return {
-      debug: (...args) => console.debug('[LIVEDEMO-DEBUG]', new Date().toISOString(), ...args),
-      info: (...args) => console.info('[LIVEDEMO-INFO]', new Date().toISOString(), ...args),
-      warn: (...args) => console.warn('[LIVEDEMO-WARN]', new Date().toISOString(), ...args),
-      error: (...args) => console.error('[LIVEDEMO-ERROR]', new Date().toISOString(), ...args)
-    };
-  }
-
-  // Initialize component
   async init() {
-    try {
-      this.logger.info('Initializing LiveDemoTab component');
-      
-      // Create enhanced DOM structure
-      this.createEnhancedStructure();
-      
-      // Initialize pose detection canvas
-      this.initializePoseCanvas();
-      
-      // Set up controls and event handlers
-      this.setupEnhancedControls();
-      
-      // Set up monitoring and health checks
-      this.setupMonitoring();
-      
-      // Initialize state
-      this.updateUI();
-      
-      this.logger.info('LiveDemoTab component initialized successfully');
-    } catch (error) {
-      this.logger.error('Failed to initialize LiveDemoTab', { error: error.message });
-      this.showError(`Initialization failed: ${error.message}`);
-    }
+    await roomConfigService.load();
+    this._buildDOM();
+    this._bindEvents();
+    this._unsubRoomConfig = roomConfigService.onChange(() => {
+      this.stopDemo();
+      this._createRoomCards();
+    });
   }
 
-  createEnhancedStructure() {
-    // Check if we need to rebuild the structure
-    const existingCanvas = this.container.querySelector('#pose-detection-main');
-    if (!existingCanvas) {
-      // Create enhanced structure if it doesn't exist
-      const enhancedHTML = `
-        <div class="live-demo-enhanced">
-          <div class="demo-header">
-            <div class="demo-title">
-              <h2>Live Human Pose Detection</h2>
-              <div class="demo-status">
-                <span class="status-indicator" id="demo-status-indicator"></span>
-                <span class="status-text" id="demo-status-text">Ready</span>
-              </div>
-            </div>
-            <div class="demo-controls">
-              <button class="btn btn--primary" id="start-enhanced-demo">Start Detection</button>
-              <button class="btn btn--secondary" id="stop-enhanced-demo" disabled>Stop Detection</button>
-              <button class="btn btn--primary" id="toggle-debug">Debug Mode</button>
-              <select class="zone-select" id="zone-selector">
-                <option value="living_room">Living Room</option>
-                <option value="bedroom">Bedroom</option>
-                <option value="kitchen">Kitchen</option>
-                <option value="bathroom">Bathroom</option>
-                <option value="hallway">Hallway</option>
-              </select>
-            </div>
-          </div>
-          
-          <div class="demo-content">
-            <div class="demo-main">
-              <div id="pose-detection-main" class="pose-detection-container"></div>
-            </div>
-            
-            <div class="demo-sidebar">
-              <div class="metrics-panel">
-                <h4>Performance Metrics</h4>
-                <div class="metric">
-                  <label>Connection Status:</label>
-                  <span id="connection-status">Disconnected</span>
-                </div>
-                <div class="metric">
-                  <label>Frames Processed:</label>
-                  <span id="frame-count">0</span>
-                </div>
-                <div class="metric">
-                  <label>Uptime:</label>
-                  <span id="uptime">0s</span>
-                </div>
-                <div class="metric">
-                  <label>Errors:</label>
-                  <span id="error-count">0</span>
-                </div>
-                <div class="metric">
-                  <label>Last Update:</label>
-                  <span id="last-update">Never</span>
-                </div>
-              </div>
-              
-              <div class="health-panel">
-                <h4>System Health</h4>
-                <div class="health-check">
-                  <label>API Health:</label>
-                  <span id="api-health">Unknown</span>
-                </div>
-                <div class="health-check">
-                  <label>WebSocket:</label>
-                  <span id="websocket-health">Unknown</span>
-                </div>
-                <div class="health-check">
-                  <label>Pose Service:</label>
-                  <span id="pose-service-health">Unknown</span>
-                </div>
-              </div>
-              
-              <div class="debug-panel" id="debug-panel" style="display: none;">
-                <h4>Debug Information</h4>
-                <div class="debug-actions">
-                  <button class="btn btn-sm" id="force-reconnect">Force Reconnect</button>
-                  <button class="btn btn-sm" id="clear-errors">Clear Errors</button>
-                  <button class="btn btn-sm" id="export-logs">Export Logs</button>
-                </div>
-                <div class="debug-info">
-                  <textarea id="debug-output" readonly rows="8" cols="30"></textarea>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="demo-footer">
-            <div class="error-display" id="error-display" style="display: none;"></div>
-          </div>
+  _buildDOM() {
+    this.container.innerHTML = `
+      <div class="liveview-header">
+        <h2>Live View</h2>
+        <div class="liveview-controls">
+          <button id="liveviewStart" class="btn btn--primary btn--sm">Start Detection</button>
+          <button id="liveviewStop" class="btn btn--secondary btn--sm" disabled>Stop Detection</button>
+          <span class="liveview-status" id="liveviewStatus">Ready</span>
         </div>
-      `;
-      
-      this.container.innerHTML = enhancedHTML;
-      this.addEnhancedStyles();
-    }
-  }
+      </div>
 
-  addEnhancedStyles() {
-    const style = document.createElement('style');
-    style.textContent = `
-      .live-demo-enhanced {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #333;
-      }
+      <div class="liveview-stats" id="liveviewStats">
+        <span>Frames: <strong id="liveviewFrames">0</strong></span>
+        <span>Uptime: <strong id="liveviewUptime">0s</strong></span>
+        <span>Total Persons: <strong id="liveviewPersons">0</strong></span>
+      </div>
 
-      .demo-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px 24px;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-        position: relative;
-        z-index: 10;
-      }
-
-      .demo-title {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-      }
-
-      .demo-title h2 {
-        margin: 0;
-        color: #333;
-        font-size: 22px;
-        font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-
-      .demo-status {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 16px;
-        background: rgba(248, 249, 250, 0.8);
-        border-radius: 20px;
-        border: 1px solid rgba(222, 226, 230, 0.5);
-      }
-
-      .status-indicator {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: #6c757d;
-        transition: all 0.3s ease;
-        box-shadow: 0 0 0 2px rgba(108, 117, 125, 0.2);
-      }
-
-      .status-indicator.active { 
-        background: #28a745; 
-        box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2), 0 0 8px rgba(40, 167, 69, 0.4);
-      }
-      .status-indicator.connecting { 
-        background: #ffc107; 
-        box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2), 0 0 8px rgba(255, 193, 7, 0.4);
-        animation: pulse 1.5s ease-in-out infinite;
-      }
-      .status-indicator.error { 
-        background: #dc3545; 
-        box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2), 0 0 8px rgba(220, 53, 69, 0.4);
-      }
-
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-      }
-
-      .status-text {
-        font-size: 13px;
-        font-weight: 500;
-        color: #495057;
-      }
-
-      .demo-controls {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .demo-controls .btn {
-        padding: 10px 20px;
-        border: 1px solid transparent;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 120px;
-        justify-content: center;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      }
-
-      .btn--primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-color: transparent;
-      }
-
-      .btn--primary:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
-      }
-
-      .btn--secondary {
-        background: #f8f9fa;
-        color: #495057;
-        border-color: #dee2e6;
-      }
-
-      .btn--secondary:hover:not(:disabled) {
-        background: #e9ecef;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      }
-
-      .btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none !important;
-        box-shadow: none !important;
-      }
-
-      .btn-sm { 
-        padding: 6px 12px; 
-        font-size: 12px;
-        min-width: 80px;
-      }
-
-      .zone-select {
-        padding: 10px 14px;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        background: white;
-        font-size: 14px;
-        cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        transition: all 0.2s ease;
-      }
-
-      .zone-select:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
-
-      .demo-content {
-        display: flex;
-        flex: 1;
-        gap: 24px;
-        padding: 24px;
-        background: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-      }
-
-      .demo-main {
-        flex: 2;
-        min-height: 500px;
-        background: white;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-      }
-
-      .pose-detection-container {
-        height: 100%;
-        position: relative;
-      }
-
-      .demo-sidebar {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        max-width: 300px;
-      }
-
-      .metrics-panel, .health-panel, .debug-panel {
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 15px;
-      }
-
-      .metrics-panel h4, .health-panel h4, .debug-panel h4 {
-        margin: 0 0 15px 0;
-        color: #333;
-        font-size: 14px;
-        font-weight: 600;
-      }
-
-      .metric, .health-check {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-        font-size: 13px;
-      }
-
-      .metric label, .health-check label {
-        color: #666;
-      }
-
-      .metric span, .health-check span {
-        font-weight: 500;
-        color: #333;
-      }
-
-      .debug-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        margin-bottom: 10px;
-      }
-
-      .debug-info textarea {
-        width: 100%;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 8px;
-        font-family: monospace;
-        font-size: 11px;
-        resize: vertical;
-      }
-
-      .error-display {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-        border-radius: 4px;
-        padding: 12px;
-        margin: 10px 20px;
-      }
-
-      .health-unknown { color: #6c757d; }
-      .health-good { color: #28a745; }
-      .health-poor { color: #ffc107; }
-      .health-bad { color: #dc3545; }
+      <div class="liveview-grid" id="liveviewGrid"></div>
     `;
-    
-    if (!document.querySelector('#live-demo-enhanced-styles')) {
-      style.id = 'live-demo-enhanced-styles';
-      document.head.appendChild(style);
+
+    this._createRoomCards();
+  }
+
+  _createRoomCards() {
+    const grid = this.container.querySelector('#liveviewGrid');
+    grid.innerHTML = '';
+
+    const order = roomConfigService.order;
+    if (order.length === 0) {
+      grid.innerHTML = '<div class="liveview-empty" style="padding:40px;text-align:center;color:var(--color-text-secondary);font-style:italic;">No rooms configured. Run Calibration first.</div>';
+      return;
+    }
+
+    for (const zoneId of order) {
+      const card = document.createElement('div');
+      card.className = 'liveview-room';
+      card.id = `liveview-room-${zoneId}`;
+
+      const header = document.createElement('div');
+      header.className = 'liveview-room-header';
+
+      const dot = document.createElement('span');
+      dot.className = 'liveview-dot';
+      dot.id = `liveview-dot-${zoneId}`;
+
+      const name = document.createElement('span');
+      name.className = 'liveview-room-name';
+      name.textContent = roomConfigService.getLabel(zoneId);
+
+      const count = document.createElement('span');
+      count.className = 'liveview-room-count';
+      count.id = `liveview-count-${zoneId}`;
+      count.textContent = '0 persons';
+
+      header.appendChild(dot);
+      header.appendChild(name);
+      header.appendChild(count);
+
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'liveview-canvas-wrap';
+
+      const canvas = document.createElement('canvas');
+      canvas.id = `liveview-canvas-${zoneId}`;
+      canvas.width = 320;
+      canvas.height = 240;
+      canvasWrap.appendChild(canvas);
+
+      const activity = document.createElement('div');
+      activity.className = 'liveview-room-activity';
+      activity.id = `liveview-activity-${zoneId}`;
+      activity.textContent = 'Waiting...';
+
+      card.appendChild(header);
+      card.appendChild(canvasWrap);
+      card.appendChild(activity);
+      grid.appendChild(card);
+
+      // Initialize renderer for this room
+      try {
+        const renderer = new PoseRenderer(canvas, {
+          width: 320,
+          height: 240,
+          showKeypoints: true,
+          showSkeleton: true,
+          showBoundingBox: false,
+          backgroundColor: '#1a1a2e',
+        });
+        this._roomRenderers[zoneId] = { canvas, renderer, persons: [] };
+      } catch (e) {
+        console.warn(`Failed to init renderer for ${zoneId}:`, e);
+        this._roomRenderers[zoneId] = { canvas, renderer: null, persons: [] };
+      }
     }
   }
 
-  initializePoseCanvas() {
-    try {
-      this.components.poseCanvas = new PoseDetectionCanvas('pose-detection-main', {
-        width: 800,
-        height: 600,
-        autoResize: true,
-        enableStats: true,
-        enableControls: false, // We'll handle controls in the parent
-        zoneId: this.state.currentZone
-      });
-
-      // Set up canvas callbacks
-      this.components.poseCanvas.setCallback('onStateChange', (state) => {
-        this.handleCanvasStateChange(state);
-      });
-
-      this.components.poseCanvas.setCallback('onPoseUpdate', (data) => {
-        this.handlePoseUpdate(data);
-      });
-
-      this.components.poseCanvas.setCallback('onError', (error) => {
-        this.handleCanvasError(error);
-      });
-
-      this.components.poseCanvas.setCallback('onConnectionChange', (state) => {
-        this.handleConnectionStateChange(state);
-      });
-
-      this.logger.info('Pose detection canvas initialized');
-    } catch (error) {
-      this.logger.error('Failed to initialize pose canvas', { error: error.message });
-      throw error;
-    }
+  _bindEvents() {
+    this.container.querySelector('#liveviewStart').addEventListener('click', () => this.startDemo());
+    this.container.querySelector('#liveviewStop').addEventListener('click', () => this.stopDemo());
   }
 
-  setupEnhancedControls() {
-    // Main controls
-    const startBtn = this.container.querySelector('#start-enhanced-demo');
-    const stopBtn = this.container.querySelector('#stop-enhanced-demo');
-    const debugBtn = this.container.querySelector('#toggle-debug');
-    const zoneSelector = this.container.querySelector('#zone-selector');
-
-    if (startBtn) {
-      startBtn.addEventListener('click', () => this.startDemo());
-    }
-
-    if (stopBtn) {
-      stopBtn.addEventListener('click', () => this.stopDemo());
-    }
-
-    if (debugBtn) {
-      debugBtn.addEventListener('click', () => this.toggleDebugMode());
-    }
-
-    if (zoneSelector) {
-      zoneSelector.addEventListener('change', (e) => this.changeZone(e.target.value));
-      zoneSelector.value = this.state.currentZone;
-    }
-
-    // Debug controls
-    const forceReconnectBtn = this.container.querySelector('#force-reconnect');
-    const clearErrorsBtn = this.container.querySelector('#clear-errors');
-    const exportLogsBtn = this.container.querySelector('#export-logs');
-
-    if (forceReconnectBtn) {
-      forceReconnectBtn.addEventListener('click', () => this.forceReconnect());
-    }
-
-    if (clearErrorsBtn) {
-      clearErrorsBtn.addEventListener('click', () => this.clearErrors());
-    }
-
-    if (exportLogsBtn) {
-      exportLogsBtn.addEventListener('click', () => this.exportLogs());
-    }
-
-    this.logger.debug('Enhanced controls set up');
-  }
-
-  setupMonitoring() {
-    // Set up periodic health checks
-    if (this.config.enablePerformanceMonitoring) {
-      this.healthCheckInterval = setInterval(() => {
-        this.performHealthCheck();
-      }, this.config.healthCheckInterval);
-    }
-
-    // Set up periodic UI updates
-    this.uiUpdateInterval = setInterval(() => {
-      this.updateMetricsDisplay();
-    }, 1000);
-
-    this.logger.debug('Monitoring set up');
-  }
-
-  // Event handlers for canvas callbacks
-  handleCanvasStateChange(state) {
-    this.state.isActive = state.isActive;
-    this.updateUI();
-    this.logger.debug('Canvas state changed', { state });
-  }
-
-  handlePoseUpdate(data) {
-    this.metrics.frameCount++;
-    this.metrics.lastUpdate = Date.now();
-    this.updateDebugOutput(`Pose update: ${data.persons?.length || 0} persons detected`);
-  }
-
-  handleCanvasError(error) {
-    this.metrics.errorCount++;
-    this.logger.error('Canvas error', { error: error.message });
-    this.showError(`Canvas error: ${error.message}`);
-  }
-
-  handleConnectionStateChange(state) {
-    this.state.connectionState = state;
-    this.updateUI();
-    this.logger.debug('Connection state changed', { state });
-  }
-
-  // Start demo
   async startDemo() {
-    if (this.state.isActive) {
-      this.logger.warn('Demo already active');
-      return;
-    }
-    
-    try {
-      this.logger.info('Starting enhanced demo');
-      this.metrics.startTime = Date.now();
-      this.metrics.frameCount = 0;
-      this.metrics.errorCount = 0;
-      this.metrics.connectionAttempts++;
-      
-      // Update UI state
-      this.setState({ isActive: true, connectionState: 'connecting' });
-      this.clearError();
-      
-      // Start the pose detection canvas
-      await this.components.poseCanvas.start();
-      
-      this.logger.info('Enhanced demo started successfully');
-      this.updateDebugOutput('Demo started successfully');
-      
-    } catch (error) {
-      this.logger.error('Failed to start enhanced demo', { error: error.message });
-      this.showError(`Failed to start: ${error.message}`);
-      this.setState({ isActive: false, connectionState: 'error' });
-    }
+    if (this.state.isActive) return;
+    this.state.isActive = true;
+    this.state.startTime = Date.now();
+    this.state.frameCount = 0;
+
+    this.container.querySelector('#liveviewStart').disabled = true;
+    this.container.querySelector('#liveviewStop').disabled = false;
+    this.container.querySelector('#liveviewStatus').textContent = 'Active';
+    this.container.querySelector('#liveviewStatus').classList.add('active');
+
+    this._pollInterval = setInterval(() => this._fetchAndRender(), 500);
+    this._uiUpdateInterval = setInterval(() => this._updateStats(), 1000);
+    this._fetchAndRender();
   }
 
-  // Stop demo
   stopDemo() {
-    if (!this.state.isActive) {
-      this.logger.warn('Demo not active');
-      return;
+    if (!this.state.isActive) return;
+    this.state.isActive = false;
+
+    if (this._pollInterval) { clearInterval(this._pollInterval); this._pollInterval = null; }
+    if (this._uiUpdateInterval) { clearInterval(this._uiUpdateInterval); this._uiUpdateInterval = null; }
+
+    this.container.querySelector('#liveviewStart').disabled = false;
+    this.container.querySelector('#liveviewStop').disabled = true;
+    this.container.querySelector('#liveviewStatus').textContent = 'Stopped';
+    this.container.querySelector('#liveviewStatus').classList.remove('active');
+
+    // Clear all canvases
+    for (const [zoneId, room] of Object.entries(this._roomRenderers)) {
+      if (room.renderer) room.renderer.clearCanvas();
+      room.persons = [];
+      this._updateRoomUI(zoneId, []);
     }
-    
+  }
+
+  async _fetchAndRender() {
     try {
-      this.logger.info('Stopping enhanced demo');
-      
-      // Stop the pose detection canvas
-      this.components.poseCanvas.stop();
-      
-      // Update state
-      this.setState({ isActive: false, connectionState: 'disconnected' });
-      this.clearError();
-      
-      this.logger.info('Enhanced demo stopped successfully');
-      this.updateDebugOutput('Demo stopped successfully');
-      
-    } catch (error) {
-      this.logger.error('Error stopping enhanced demo', { error: error.message });
-      this.showError(`Error stopping: ${error.message}`);
+      const pose = await poseService.getCurrentPose();
+      if (!pose) return;
+
+      this.state.frameCount++;
+      const persons = pose.persons || [];
+
+      // Group persons by zone
+      const byZone = {};
+      for (const zoneId of roomConfigService.order) byZone[zoneId] = [];
+
+      for (const p of persons) {
+        const zoneId = p.zone_id || 'living_room';
+        if (!byZone[zoneId]) byZone[zoneId] = [];
+        byZone[zoneId].push(p);
+      }
+
+      // Update total count
+      const totalEl = this.container.querySelector('#liveviewPersons');
+      if (totalEl) totalEl.textContent = persons.length;
+
+      // Render each room
+      for (const [zoneId, roomPersons] of Object.entries(byZone)) {
+        const room = this._roomRenderers[zoneId];
+        if (!room) continue;
+        room.persons = roomPersons;
+
+        this._updateRoomUI(zoneId, roomPersons);
+
+        if (room.renderer) {
+          // Normalize keypoints for renderer
+          const normalized = roomPersons.map(p => ({
+            person_id: p.person_id,
+            confidence: p.confidence || 0,
+            keypoints: p.keypoints || [],
+            bbox: p.bounding_box || p.bbox || null,
+            activity: p.activity || 'unknown',
+          }));
+
+          room.renderer.render({
+            persons: normalized,
+            timestamp: Date.now(),
+            metadata: { zone_id: zoneId },
+          });
+        }
+      }
+    } catch (e) {
+      // Silent - API may not be ready
     }
   }
 
-  // Enhanced control methods
-  toggleDebugMode() {
-    this.state.debugMode = !this.state.debugMode;
-    const debugPanel = this.container.querySelector('#debug-panel');
-    const debugBtn = this.container.querySelector('#toggle-debug');
-    
-    if (debugPanel) {
-      debugPanel.style.display = this.state.debugMode ? 'block' : 'none';
-    }
-    
-    if (debugBtn) {
-      debugBtn.textContent = this.state.debugMode ? 'Hide Debug' : 'Debug Mode';
-      debugBtn.classList.toggle('active', this.state.debugMode);
-    }
-    
-    this.logger.info('Debug mode toggled', { enabled: this.state.debugMode });
-  }
+  _updateRoomUI(zoneId, persons) {
+    const count = persons.length;
 
-  async changeZone(zoneId) {
-    this.logger.info('Changing zone', { from: this.state.currentZone, to: zoneId });
-    this.state.currentZone = zoneId;
-    
-    // Update canvas configuration
-    if (this.components.poseCanvas) {
-      this.components.poseCanvas.updateConfig({ zoneId });
-      
-      // Restart if currently active
-      if (this.state.isActive) {
-        await this.components.poseCanvas.reconnect();
+    const dotEl = this.container.querySelector(`#liveview-dot-${zoneId}`);
+    if (dotEl) dotEl.className = `liveview-dot ${count > 0 ? 'active' : ''}`;
+
+    const countEl = this.container.querySelector(`#liveview-count-${zoneId}`);
+    if (countEl) countEl.textContent = `${count} person${count !== 1 ? 's' : ''}`;
+
+    const actEl = this.container.querySelector(`#liveview-activity-${zoneId}`);
+    if (actEl) {
+      if (count === 0) {
+        actEl.textContent = 'Empty';
+        actEl.className = 'liveview-room-activity empty';
+      } else {
+        const activities = persons.map(p => p.activity || 'unknown');
+        const hasFall = activities.includes('falling');
+        actEl.textContent = activities.join(', ');
+        actEl.className = `liveview-room-activity ${hasFall ? 'danger' : 'active'}`;
       }
     }
-  }
 
-  async forceReconnect() {
-    if (!this.state.isActive) {
-      this.showError('Cannot reconnect - demo not active');
-      return;
-    }
-    
-    try {
-      this.logger.info('Forcing reconnection');
-      await this.components.poseCanvas.reconnect();
-      this.updateDebugOutput('Force reconnection initiated');
-    } catch (error) {
-      this.logger.error('Force reconnection failed', { error: error.message });
-      this.showError(`Reconnection failed: ${error.message}`);
+    const card = this.container.querySelector(`#liveview-room-${zoneId}`);
+    if (card) {
+      card.classList.toggle('occupied', count > 0);
     }
   }
 
-  clearErrors() {
-    this.metrics.errorCount = 0;
-    this.clearError();
-    poseService.clearValidationErrors();
-    this.updateDebugOutput('Errors cleared');
-    this.logger.info('Errors cleared');
-  }
+  _updateStats() {
+    const framesEl = this.container.querySelector('#liveviewFrames');
+    if (framesEl) framesEl.textContent = this.state.frameCount;
 
-  exportLogs() {
-    const logs = {
-      timestamp: new Date().toISOString(),
-      state: this.state,
-      metrics: this.metrics,
-      poseServiceMetrics: poseService.getPerformanceMetrics(),
-      wsServiceStats: wsService.getAllConnectionStats(),
-      canvasStats: this.components.poseCanvas?.getPerformanceMetrics()
-    };
-    
-    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pose-detection-logs-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    this.updateDebugOutput('Logs exported');
-    this.logger.info('Logs exported');
-  }
-
-  // State management
-  setState(newState) {
-    this.state = { ...this.state, ...newState };
-    this.updateUI();
-  }
-
-  updateUI() {
-    this.updateStatusIndicator();
-    this.updateControls();
-    this.updateMetricsDisplay();
-  }
-
-  updateStatusIndicator() {
-    const indicator = this.container.querySelector('#demo-status-indicator');
-    const text = this.container.querySelector('#demo-status-text');
-    
-    if (indicator) {
-      indicator.className = `status-indicator ${this.getStatusClass()}`;
-    }
-    
-    if (text) {
-      text.textContent = this.getStatusText();
+    const uptimeEl = this.container.querySelector('#liveviewUptime');
+    if (uptimeEl && this.state.startTime) {
+      const sec = Math.round((Date.now() - this.state.startTime) / 1000);
+      uptimeEl.textContent = `${sec}s`;
     }
   }
 
-  getStatusClass() {
-    if (this.state.isActive) {
-      return this.state.connectionState === 'connected' ? 'active' : 'connecting';
-    }
-    return this.state.connectionState === 'error' ? 'error' : '';
-  }
-
-  getStatusText() {
-    if (this.state.isActive) {
-      return this.state.connectionState === 'connected' ? 'Active' : 'Connecting...';
-    }
-    return this.state.connectionState === 'error' ? 'Error' : 'Ready';
-  }
-
-  updateControls() {
-    const startBtn = this.container.querySelector('#start-enhanced-demo');
-    const stopBtn = this.container.querySelector('#stop-enhanced-demo');
-    const zoneSelector = this.container.querySelector('#zone-selector');
-    
-    if (startBtn) {
-      startBtn.disabled = this.state.isActive;
-    }
-    
-    if (stopBtn) {
-      stopBtn.disabled = !this.state.isActive;
-    }
-    
-    if (zoneSelector) {
-      zoneSelector.disabled = this.state.isActive;
-    }
-  }
-
-  updateMetricsDisplay() {
-    const elements = {
-      connectionStatus: this.container.querySelector('#connection-status'),
-      frameCount: this.container.querySelector('#frame-count'),
-      uptime: this.container.querySelector('#uptime'),
-      errorCount: this.container.querySelector('#error-count'),
-      lastUpdate: this.container.querySelector('#last-update')
-    };
-
-    if (elements.connectionStatus) {
-      elements.connectionStatus.textContent = this.state.connectionState;
-      elements.connectionStatus.className = `health-${this.getHealthClass(this.state.connectionState)}`;
-    }
-
-    if (elements.frameCount) {
-      elements.frameCount.textContent = this.metrics.frameCount;
-    }
-
-    if (elements.uptime) {
-      const uptime = this.metrics.startTime ? 
-        Math.round((Date.now() - this.metrics.startTime) / 1000) : 0;
-      elements.uptime.textContent = `${uptime}s`;
-    }
-
-    if (elements.errorCount) {
-      elements.errorCount.textContent = this.metrics.errorCount;
-      elements.errorCount.className = this.metrics.errorCount > 0 ? 'health-bad' : 'health-good';
-    }
-
-    if (elements.lastUpdate) {
-      const lastUpdate = this.metrics.lastUpdate ? 
-        new Date(this.metrics.lastUpdate).toLocaleTimeString() : 'Never';
-      elements.lastUpdate.textContent = lastUpdate;
-    }
-  }
-
-  getHealthClass(status) {
-    switch (status) {
-      case 'connected': return 'good';
-      case 'connecting': return 'poor';
-      case 'error': return 'bad';
-      default: return 'unknown';
-    }
-  }
-
-  async performHealthCheck() {
-    try {
-      // Check pose service health
-      const poseHealth = await poseService.healthCheck();
-      this.updateHealthDisplay('pose-service-health', poseHealth.healthy);
-
-      // Check WebSocket health
-      const wsStats = wsService.getAllConnectionStats();
-      const wsHealthy = wsStats.connections.some(conn => conn.status === 'connected');
-      this.updateHealthDisplay('websocket-health', wsHealthy);
-
-      // Check API health (simplified)
-      this.updateHealthDisplay('api-health', poseHealth.apiHealthy);
-
-    } catch (error) {
-      this.logger.error('Health check failed', { error: error.message });
-    }
-  }
-
-  updateHealthDisplay(elementId, isHealthy) {
-    const element = this.container.querySelector(`#${elementId}`);
-    if (element) {
-      element.textContent = isHealthy ? 'Good' : 'Poor';
-      element.className = isHealthy ? 'health-good' : 'health-poor';
-    }
-  }
-
-  updateDebugOutput(message) {
-    if (!this.state.debugMode) return;
-    
-    const debugOutput = this.container.querySelector('#debug-output');
-    if (debugOutput) {
-      const timestamp = new Date().toLocaleTimeString();
-      const newLine = `[${timestamp}] ${message}\n`;
-      debugOutput.value = (debugOutput.value + newLine).split('\n').slice(-50).join('\n');
-      debugOutput.scrollTop = debugOutput.scrollHeight;
-    }
-  }
-
-  showError(message) {
-    const errorDisplay = this.container.querySelector('#error-display');
-    if (errorDisplay) {
-      errorDisplay.textContent = message;
-      errorDisplay.style.display = 'block';
-    }
-    
-    // Auto-hide after 10 seconds
-    setTimeout(() => this.clearError(), 10000);
-  }
-
-  clearError() {
-    const errorDisplay = this.container.querySelector('#error-display');
-    if (errorDisplay) {
-      errorDisplay.style.display = 'none';
-    }
-  }
-
-  // Clean up
   dispose() {
-    try {
-      this.logger.info('Disposing LiveDemoTab component');
-      
-      // Stop demo if running
-      if (this.state.isActive) {
-        this.stopDemo();
-      }
-      
-      // Clear intervals
-      if (this.healthCheckInterval) {
-        clearInterval(this.healthCheckInterval);
-      }
-      
-      if (this.uiUpdateInterval) {
-        clearInterval(this.uiUpdateInterval);
-      }
-      
-      // Dispose canvas component
-      if (this.components.poseCanvas) {
-        this.components.poseCanvas.dispose();
-      }
-      
-      // Unsubscribe from services
-      this.subscriptions.forEach(unsubscribe => unsubscribe());
-      this.subscriptions = [];
-      
-      this.logger.info('LiveDemoTab component disposed successfully');
-    } catch (error) {
-      this.logger.error('Error during disposal', { error: error.message });
+    this.stopDemo();
+    if (this._unsubRoomConfig) this._unsubRoomConfig();
+    for (const room of Object.values(this._roomRenderers)) {
+      if (room.renderer && room.renderer.dispose) room.renderer.dispose();
     }
+    this._roomRenderers = {};
   }
 }

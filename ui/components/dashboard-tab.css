@@ -117,46 +117,13 @@
   font-style: italic;
 }
 
-/* Alert Mini Cards */
-.alert-mini-cards {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.alert-mini {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--color-card-border-inner);
-}
-
-.alert-mini.critical { border-left: 3px solid var(--color-error); }
-.alert-mini.warning { border-left: 3px solid var(--color-warning); }
-.alert-mini.info { border-left: 3px solid var(--color-info); }
-
-.mini-count {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  color: var(--color-text);
-}
-
-.mini-label {
-  font-size: 10px;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-}
-
-/* Recent Alerts */
-.recent-alerts {
-  max-height: 180px;
+/* Movement Trail */
+.movement-trail {
+  max-height: 300px;
   overflow-y: auto;
 }
 
-.recent-alert-item {
+.trail-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -165,22 +132,58 @@
   font-size: var(--font-size-sm);
 }
 
-.recent-alert-item:last-child {
+.trail-item:last-child {
   border-bottom: none;
 }
 
-.recent-alert-msg {
-  flex: 1;
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-alert-time {
+.trail-time {
+  width: 65px;
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
-  white-space: nowrap;
+  font-family: var(--font-family-mono);
+  flex-shrink: 0;
+}
+
+.trail-person {
+  width: 70px;
+  font-weight: 600;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+.trail-path {
+  flex: 1;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.trail-from {
+  color: var(--color-text-secondary);
+}
+
+.trail-arrow {
+  color: var(--color-text-secondary);
+  margin: 0 2px;
+}
+
+.trail-to {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.trail-activity {
+  width: 60px;
+  font-size: var(--font-size-xs);
+  text-transform: capitalize;
+  color: var(--color-text-secondary);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.trail-activity.danger {
+  color: var(--color-error);
+  font-weight: 700;
 }
 
 /* Activity Monitor */
@@ -254,6 +257,91 @@
   color: var(--color-text-secondary);
 }
 
+/* Occupancy Heatmap */
+.hm-table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.hm-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--color-card-border-inner);
+}
+
+.hm-row:last-child {
+  border-bottom: none;
+}
+
+.hm-header {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: 6px;
+}
+
+.hm-label {
+  width: 90px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  font-weight: 500;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hm-time {
+  flex: 1;
+  min-width: 40px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+}
+
+.hm-cell {
+  flex: 1;
+  min-width: 40px;
+  text-align: center;
+  padding: 4px 2px;
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  transition: background 0.3s ease;
+}
+
+.hm-level-0 {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.hm-level-1 {
+  background: rgba(var(--color-success-rgb), 0.15);
+  color: var(--color-success);
+}
+
+.hm-level-2 {
+  background: rgba(var(--color-success-rgb), 0.30);
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.hm-level-3 {
+  background: rgba(230, 168, 23, 0.25);
+  color: #c48f00;
+  font-weight: 600;
+}
+
+.hm-level-4 {
+  background: rgba(192, 21, 47, 0.20);
+  color: var(--color-error);
+  font-weight: 700;
+}
+
 /* Live Event Feed */
 .event-feed {
   max-height: 250px;
@@ -300,225 +388,8 @@
   font-weight: 600;
 }
 
-/* System Health */
-.health-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.health-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-}
-
-.health-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-text-secondary);
-}
-
-.health-dot.healthy {
-  background: #3da35d;
-  box-shadow: 0 0 4px rgba(61, 163, 93, 0.4);
-}
-
-.health-dot.degraded {
-  background: var(--color-warning);
-}
-
-.health-dot.unhealthy {
-  background: var(--color-error);
-}
-
-.health-metrics {
-  border-top: 1px solid var(--color-card-border-inner);
-  padding-top: 8px;
-}
-
-.metric-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-}
-
-.metric-row span:first-child {
-  width: 55px;
-}
-
-.mini-bar {
-  flex: 1;
-  height: 8px;
-  background: var(--color-secondary);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.mini-fill {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: 4px;
-  transition: width 0.5s ease;
-}
-
-.metric-val {
-  width: 35px;
-  text-align: right;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-/* Occupancy Timeline */
-.timeline-table {
-  width: 100%;
-  font-size: var(--font-size-sm);
-}
-
-.timeline-row {
-  display: grid;
-  grid-template-columns: 55px repeat(auto-fill, minmax(60px, 1fr));
-  gap: 4px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--color-card-border-inner);
-  align-items: center;
-}
-
-.timeline-row:last-child {
-  border-bottom: none;
-}
-
-.timeline-header {
-  font-weight: 600;
-  color: var(--color-text);
-  border-bottom: 2px solid var(--color-border);
-  padding-bottom: 6px;
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-}
-
-.timeline-time {
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-.timeline-cell {
-  text-align: center;
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-.timeline-cell.occupied {
-  background: rgba(var(--color-success-rgb), 0.15);
-  color: var(--color-success);
-  font-weight: 600;
-}
-
-/* Analytics Panel */
-.dash-analytics {
-  grid-column: 1 / -1;
-}
-
-.analytics-row {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.analytics-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 6px;
-  border: 1px solid var(--color-card-border-inner);
-  border-radius: 6px;
-  text-align: center;
-}
-
-.analytics-val {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  color: var(--color-text);
-  line-height: 1;
-}
-
-.analytics-val.danger {
-  color: var(--color-error);
-}
-
-.analytics-label {
-  font-size: 10px;
-  color: var(--color-text-secondary);
-  margin-top: 4px;
-  text-transform: uppercase;
-}
-
-.analytics-bar-chart {
-  padding: 8px 0;
-}
-
-.analytics-bar-label {
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.analytics-bar-track {
-  display: flex;
-  height: 16px;
-  background: var(--color-secondary);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.analytics-bar-fill.success {
-  background: var(--color-success);
-  transition: width 0.5s ease;
-}
-
-.analytics-bar-fill.fail {
-  background: var(--color-error);
-  transition: width 0.5s ease;
-}
-
-.analytics-bar-legend {
-  display: flex;
-  gap: 16px;
-  margin-top: 6px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.legend-dot.success { background: var(--color-success); }
-.legend-dot.fail { background: var(--color-error); }
-
 /* Responsive */
 @media (max-width: 768px) {
   .dash-stats-bar { grid-template-columns: repeat(2, 1fr); }
   .dash-grid { grid-template-columns: 1fr; }
-  .analytics-row { grid-template-columns: repeat(3, 1fr); }
 }

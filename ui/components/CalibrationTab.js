@@ -9,6 +9,7 @@
  */
 
 import { poseService } from '../services/pose.service.js';
+import { roomConfigService } from '../services/room-config.service.js';
 
 const PHASES = [
   { id: 1, label: 'Environment Baseline', sub: 'Empty room scan' },
@@ -180,6 +181,9 @@ export class CalibrationTab {
       if (status.calibration_results) {
         this._showResults(status.calibration_results);
       }
+
+      // Refresh room config so other tabs pick up the new rooms
+      roomConfigService.reload();
     }
   }
 

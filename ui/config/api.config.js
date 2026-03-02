@@ -39,6 +39,7 @@ export const API_CONFIG = {
       ANALYZE: '/api/v1/pose/analyze',
       ZONE_OCCUPANCY: '/api/v1/pose/zones/{zone_id}/occupancy',
       ZONES_SUMMARY: '/api/v1/pose/zones/summary',
+      ZONES_CONFIG: '/api/v1/pose/zones/config',
       HISTORICAL: '/api/v1/pose/historical',
       ACTIVITIES: '/api/v1/pose/activities',
       CALIBRATE: '/api/v1/pose/calibrate',

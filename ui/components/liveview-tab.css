@@ -1,0 +1,153 @@
+/* Live View Tab Styles */
+
+.liveview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.liveview-header h2 {
+  margin: 0;
+}
+
+.liveview-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.liveview-status {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--color-secondary);
+}
+
+.liveview-status.active {
+  color: var(--color-success);
+  background: rgba(var(--color-success-rgb), 0.1);
+  font-weight: 600;
+}
+
+.liveview-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.liveview-stats strong {
+  color: var(--color-text);
+}
+
+/* Room Grid */
+.liveview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.liveview-room {
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+
+.liveview-room.occupied {
+  border-color: rgba(var(--color-success-rgb), 0.4);
+}
+
+.liveview-room-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-card-border-inner);
+}
+
+.liveview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+.liveview-dot.active {
+  background: var(--color-success);
+  opacity: 1;
+  box-shadow: 0 0 6px rgba(var(--color-success-rgb), 0.4);
+}
+
+.liveview-room-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.liveview-room-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.liveview-canvas-wrap {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #1a1a2e;
+  position: relative;
+}
+
+.liveview-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.liveview-room-activity {
+  padding: 6px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+  border-top: 1px solid var(--color-card-border-inner);
+}
+
+.liveview-room-activity.active {
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+.liveview-room-activity.danger {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.liveview-room-activity.empty {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .liveview-grid {
+    grid-template-columns: 1fr;
+  }
+  .liveview-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .liveview-stats {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

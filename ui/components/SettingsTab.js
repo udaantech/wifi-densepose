@@ -1,17 +1,10 @@
-// Security Settings Tab — Zone Management, System Metrics, Stream Clients
+// Settings Tab — Zone Management, System Metrics, Stream Clients, WiFi Diagnostics
 
 import { poseService } from '../services/pose.service.js';
 import { healthService } from '../services/health.service.js';
 import { streamService } from '../services/stream.service.js';
-import { alertService } from '../services/alert.service.js';
-
-const ROOM_LABELS = {
-  living_room: 'Living Room',
-  bedroom: 'Bedroom',
-  kitchen: 'Kitchen',
-  bathroom: 'Bathroom',
-  hallway: 'Hallway',
-};
+import { sensingService } from '../services/sensing.service.js';
+import { roomConfigService } from '../services/room-config.service.js';
 
 export class SettingsTab {
   constructor(container) {
@@ -19,18 +12,22 @@ export class SettingsTab {
     this._pollInterval = null;
     this._zoneData = {};
     this._selectedZone = null;
+    this._unsubSensing = null;
+    this._unsubSensingState = null;
   }
 
   async init() {
+    await roomConfigService.load();
     this._buildDOM();
     this._bindEvents();
     await this._refreshAll();
     this._startPolling();
+    this._connectSensing();
   }
 
   _buildDOM() {
     this.container.innerHTML = `
-      <h2>Security Settings</h2>
+      <h2>Settings</h2>
 
       <div class="settings-grid">
         <!-- Zone Management -->
@@ -44,36 +41,47 @@ export class SettingsTab {
           </div>
         </div>
 
-        <!-- Alert Rules (Enhanced) -->
-        <div class="settings-panel settings-rules">
-          <h3>Alert Rules Configuration</h3>
-          <div class="rules-list" id="settingsRulesList"></div>
-          <div class="rule-editor" id="settingsRuleEditor" style="display:none;">
-            <h4 id="ruleEditorTitle">Edit Rule</h4>
-            <div class="rule-form">
-              <div class="form-row">
-                <label>Severity</label>
-                <select id="ruleEditSeverity" class="settings-select">
-                  <option value="info">Info</option>
-                  <option value="warning">Warning</option>
-                  <option value="critical">Critical</option>
-                </select>
-              </div>
-              <div class="form-row">
-                <label>Monitored Zones</label>
-                <div class="zone-checkboxes" id="ruleEditZones"></div>
-              </div>
-              <div class="form-row rule-actions">
-                <button id="ruleEditSave" class="btn btn--primary btn--sm">Save Changes</button>
-                <button id="ruleEditCancel" class="btn btn--secondary btn--sm">Cancel</button>
-                <button id="ruleEditTest" class="btn btn--secondary btn--sm">Test Rule</button>
-              </div>
-              <div class="rule-test-result" id="ruleTestResult" style="display:none;"></div>
+        <!-- WiFi Diagnostics (from Sensing) -->
+        <div class="settings-panel settings-diagnostics">
+          <h3>WiFi Diagnostics</h3>
+          <div class="diag-connection">
+            <span class="sensing-dot" id="diagSensingDot"></span>
+            <span id="diagSensingState">Disconnected</span>
+            <span class="diag-source" id="diagSensingSource"></span>
+          </div>
+          <div class="diag-metrics">
+            <div class="diag-row">
+              <span>RSSI</span><span id="diagRssi">-- dBm</span>
+            </div>
+            <div class="diag-row">
+              <span>Variance</span>
+              <div class="diag-bar"><div class="diag-bar-fill" id="diagBarVariance"></div></div>
+              <span class="diag-val" id="diagValVariance">0</span>
+            </div>
+            <div class="diag-row">
+              <span>Motion Band</span>
+              <div class="diag-bar"><div class="diag-bar-fill motion" id="diagBarMotion"></div></div>
+              <span class="diag-val" id="diagValMotion">0</span>
+            </div>
+            <div class="diag-row">
+              <span>Breathing Band</span>
+              <div class="diag-bar"><div class="diag-bar-fill breath" id="diagBarBreath"></div></div>
+              <span class="diag-val" id="diagValBreath">0</span>
+            </div>
+            <div class="diag-row">
+              <span>Classification</span>
+              <span id="diagClassLabel" class="diag-class-label">ABSENT</span>
+            </div>
+            <div class="diag-row">
+              <span>Dominant Freq</span><span id="diagDomFreq">0 Hz</span>
+            </div>
+            <div class="diag-row">
+              <span>Sample Rate</span><span id="diagSampleRate">--</span>
             </div>
           </div>
         </div>
 
-        <!-- System Metrics (Full) -->
+        <!-- System Metrics -->
         <div class="settings-panel settings-metrics">
           <h3>System Resources</h3>
           <div class="metrics-grid" id="settingsMetrics">
@@ -94,15 +102,12 @@ export class SettingsTab {
   }
 
   _bindEvents() {
-    this.container.querySelector('#ruleEditSave').addEventListener('click', () => this._saveRule());
-    this.container.querySelector('#ruleEditCancel').addEventListener('click', () => this._cancelRuleEdit());
-    this.container.querySelector('#ruleEditTest').addEventListener('click', () => this._testRule());
+    // No rule editor buttons needed anymore
   }
 
   async _refreshAll() {
     await Promise.allSettled([
       this._refreshZones(),
-      this._refreshRules(),
       this._refreshMetrics(),
       this._refreshClients(),
     ]);
@@ -134,7 +139,7 @@ export class SettingsTab {
       el.className = `zone-list-item ${this._selectedZone === zoneId ? 'selected' : ''} ${count > 0 ? 'occupied' : ''}`;
       el.innerHTML = `
         <span class="zone-dot ${count > 0 ? 'active' : ''}"></span>
-        <span class="zone-name">${ROOM_LABELS[zoneId] || zoneId}</span>
+        <span class="zone-name">${roomConfigService.getLabel(zoneId)}</span>
         <span class="zone-count">${count} person${count !== 1 ? 's' : ''}</span>
       `;
       el.addEventListener('click', () => this._selectZone(zoneId));
@@ -144,7 +149,6 @@ export class SettingsTab {
 
   async _selectZone(zoneId) {
     this._selectedZone = zoneId;
-    // Re-render list to update selected state
     this._renderZoneList(this._zoneData);
 
     const detail = this.container.querySelector('#settingsZoneDetail');
@@ -154,13 +158,13 @@ export class SettingsTab {
       const data = await poseService.getZoneOccupancy(zoneId);
       this._renderZoneDetail(zoneId, data);
     } catch (e) {
-      detail.innerHTML = `<div class="settings-empty">Could not load details for ${ROOM_LABELS[zoneId] || zoneId}</div>`;
+      detail.innerHTML = `<div class="settings-empty">Could not load details for ${roomConfigService.getLabel(zoneId)}</div>`;
     }
   }
 
   _renderZoneDetail(zoneId, data) {
     const detail = this.container.querySelector('#settingsZoneDetail');
-    const label = ROOM_LABELS[zoneId] || zoneId;
+    const label = roomConfigService.getLabel(zoneId);
     const persons = data.persons || [];
     const maxOccupancy = data.max_occupancy || '--';
     const current = data.current_occupancy || 0;
@@ -192,142 +196,69 @@ export class SettingsTab {
     `;
   }
 
-  // --- Alert Rules (Enhanced) ---
-  async _refreshRules() {
-    try {
-      const data = await alertService.getRules();
-      this._rules = data.rules || [];
-      this._renderRules(this._rules);
-    } catch (e) {
-      this._rules = [];
+  // --- WiFi Diagnostics ---
+  _connectSensing() {
+    sensingService.start();
+    this._unsubSensing = sensingService.onData((data) => this._onSensingData(data));
+    this._unsubSensingState = sensingService.onStateChange((state) => this._onSensingState(state));
+  }
+
+  _onSensingState(state) {
+    const dot = this.container.querySelector('#diagSensingDot');
+    const text = this.container.querySelector('#diagSensingState');
+    if (!dot || !text) return;
+
+    const labels = {
+      disconnected: 'Disconnected',
+      connecting: 'Connecting...',
+      connected: 'Connected',
+      simulated: 'Simulated',
+    };
+
+    dot.className = 'sensing-dot ' + state;
+    text.textContent = labels[state] || state;
+  }
+
+  _onSensingData(data) {
+    const f = data.features || {};
+    const c = data.classification || {};
+
+    this._setDiagText('diagRssi', `${(f.mean_rssi || -80).toFixed(1)} dBm`);
+    this._setDiagText('diagSensingSource', data.source || '');
+
+    this._setDiagBar('diagBarVariance', f.variance, 10, 'diagValVariance', f.variance);
+    this._setDiagBar('diagBarMotion', f.motion_band_power, 0.5, 'diagValMotion', f.motion_band_power);
+    this._setDiagBar('diagBarBreath', f.breathing_band_power, 0.3, 'diagValBreath', f.breathing_band_power);
+
+    const label = this.container.querySelector('#diagClassLabel');
+    if (label) {
+      const level = (c.motion_level || 'absent').toUpperCase();
+      label.textContent = level;
+      label.className = 'diag-class-label ' + (c.motion_level || 'absent');
+    }
+
+    this._setDiagText('diagDomFreq', (f.dominant_freq_hz || 0).toFixed(3) + ' Hz');
+    this._setDiagText('diagSampleRate', data.source === 'simulated' ? 'sim' : 'live');
+  }
+
+  _setDiagText(id, text) {
+    const el = this.container.querySelector('#' + id);
+    if (el) el.textContent = text;
+  }
+
+  _setDiagBar(barId, value, maxVal, valId, displayVal) {
+    const bar = this.container.querySelector('#' + barId);
+    if (bar) {
+      const pct = Math.min(100, Math.max(0, ((value || 0) / maxVal) * 100));
+      bar.style.width = pct + '%';
+    }
+    if (valId && displayVal != null) {
+      const el = this.container.querySelector('#' + valId);
+      if (el) el.textContent = typeof displayVal === 'number' ? displayVal.toFixed(3) : displayVal;
     }
   }
 
-  _renderRules(rules) {
-    const container = this.container.querySelector('#settingsRulesList');
-    container.innerHTML = '';
-
-    for (const rule of rules) {
-      const el = document.createElement('div');
-      el.className = `settings-rule-item ${rule.enabled ? 'enabled' : 'disabled'}`;
-
-      const zonesText = rule.zone_ids.map(z => ROOM_LABELS[z] || z).join(', ');
-      const condText = rule.conditions ? Object.entries(rule.conditions).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
-
-      el.innerHTML = `
-        <div class="rule-row-main">
-          <div class="rule-info">
-            <span class="rule-name">${rule.name}</span>
-            <span class="alert-badge severity-${rule.severity}">${rule.severity.toUpperCase()}</span>
-          </div>
-          <div class="rule-controls">
-            <label class="rule-toggle">
-              <input type="checkbox" ${rule.enabled ? 'checked' : ''} data-rule-id="${rule.id}">
-              <span class="toggle-slider"></span>
-            </label>
-            <button class="btn btn--sm btn--secondary rule-edit-btn" data-rule-id="${rule.id}">Edit</button>
-          </div>
-        </div>
-        <div class="rule-row-detail">
-          <span class="rule-zones-text">Zones: ${zonesText}</span>
-          ${condText ? `<span class="rule-cond-text">Conditions: ${condText}</span>` : ''}
-        </div>
-      `;
-
-      // Toggle handler
-      el.querySelector('input[type=checkbox]').addEventListener('change', async (e) => {
-        await alertService.updateRule(rule.id, { enabled: e.target.checked });
-        this._refreshRules();
-      });
-
-      // Edit handler
-      el.querySelector('.rule-edit-btn').addEventListener('click', () => this._editRule(rule));
-
-      container.appendChild(el);
-    }
-  }
-
-  _editRule(rule) {
-    this._editingRule = rule;
-    const editor = this.container.querySelector('#settingsRuleEditor');
-    editor.style.display = 'block';
-
-    this.container.querySelector('#ruleEditorTitle').textContent = `Edit: ${rule.name}`;
-    this.container.querySelector('#ruleEditSeverity').value = rule.severity;
-
-    // Build zone checkboxes
-    const zonesContainer = this.container.querySelector('#ruleEditZones');
-    const allZones = ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'];
-    zonesContainer.innerHTML = '';
-    for (const z of allZones) {
-      const label = document.createElement('label');
-      label.className = 'zone-checkbox';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = z;
-      cb.checked = rule.zone_ids.includes(z);
-      label.appendChild(cb);
-      label.appendChild(document.createTextNode(' ' + (ROOM_LABELS[z] || z)));
-      zonesContainer.appendChild(label);
-    }
-
-    this.container.querySelector('#ruleTestResult').style.display = 'none';
-  }
-
-  async _saveRule() {
-    if (!this._editingRule) return;
-
-    const severity = this.container.querySelector('#ruleEditSeverity').value;
-    const checkboxes = this.container.querySelectorAll('#ruleEditZones input[type=checkbox]:checked');
-    const zone_ids = Array.from(checkboxes).map(cb => cb.value);
-
-    await alertService.updateRule(this._editingRule.id, { severity, zone_ids });
-    this._cancelRuleEdit();
-    await this._refreshRules();
-  }
-
-  _cancelRuleEdit() {
-    this._editingRule = null;
-    this.container.querySelector('#settingsRuleEditor').style.display = 'none';
-  }
-
-  async _testRule() {
-    if (!this._editingRule) return;
-    const resultEl = this.container.querySelector('#ruleTestResult');
-    resultEl.style.display = 'block';
-    resultEl.textContent = 'Testing rule...';
-    resultEl.className = 'rule-test-result';
-
-    try {
-      // Get current pose data to test against
-      const pose = await poseService.getCurrentPose();
-      const persons = pose?.persons || [];
-      const zoneId = this._editingRule.zone_ids[0] || 'living_room';
-
-      // Use the evaluate endpoint
-      const response = await alertService.evaluate ?
-        await alertService.evaluate({ zone_id: zoneId, persons }) :
-        await fetch(`http://localhost:3010/api/v1/alerts/evaluate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ zone_id: zoneId, persons })
-        }).then(r => r.json());
-
-      const triggered = response?.alerts_triggered || response?.alerts || [];
-      if (triggered.length > 0) {
-        resultEl.textContent = `Rule triggered! ${triggered.length} alert(s) generated.`;
-        resultEl.className = 'rule-test-result triggered';
-      } else {
-        resultEl.textContent = 'Rule did not trigger with current data.';
-        resultEl.className = 'rule-test-result not-triggered';
-      }
-    } catch (e) {
-      resultEl.textContent = 'Test failed: ' + e.message;
-      resultEl.className = 'rule-test-result error';
-    }
-  }
-
-  // --- System Metrics (Full) ---
+  // --- System Metrics ---
   async _refreshMetrics() {
     try {
       const metrics = await healthService.getSystemMetrics();
@@ -340,7 +271,6 @@ export class SettingsTab {
 
   _renderMetrics(raw) {
     const container = this.container.querySelector('#settingsMetrics');
-    // Backend may wrap in { metrics: {...} }
     const m = raw?.metrics || raw;
     const cpu = m.cpu?.percent || m.cpu_percent || 0;
     const mem = m.memory?.percent || m.memory_percent || 0;
@@ -488,5 +418,8 @@ export class SettingsTab {
 
   dispose() {
     this._stopPolling();
+    if (this._unsubSensing) this._unsubSensing();
+    if (this._unsubSensingState) this._unsubSensingState();
+    sensingService.stop();
   }
 }

@@ -2,12 +2,21 @@
 Domain-specific configuration for WiFi-DensePose
 """
 
+import os
+import json
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
 
 from pydantic import BaseModel, Field, validator
+
+logger = logging.getLogger(__name__)
+
+DOMAIN_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), '..', '..', 'data', 'domain_config.json'
+)
 
 
 class ZoneType(str, Enum):
@@ -411,55 +420,71 @@ class DomainConfig:
 
 @lru_cache()
 def get_domain_config() -> DomainConfig:
-    """Get cached domain configuration instance."""
-    return DomainConfig()
-
-
-def load_domain_config_from_file(file_path: str) -> DomainConfig:
-    """Load domain configuration from file."""
-    import json
-    
+    """Get cached domain configuration instance, loading persisted zones if available."""
     config = DomainConfig()
-    
     try:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-        
-        # Load zones
-        for zone_data in data.get("zones", []):
-            zone = ZoneConfig(**zone_data)
-            config.add_zone(zone)
-        
-        # Load routers
-        for router_data in data.get("routers", []):
-            router = RouterConfig(**router_data)
-            config.add_router(router)
-        
-        # Load pose models
-        for model_data in data.get("pose_models", []):
-            model = PoseModelConfig(**model_data)
-            config.add_pose_model(model)
-        
-        # Load streaming config
-        if "streaming" in data:
-            config.streaming = StreamingConfig(**data["streaming"])
-        
-        # Load alerts config
-        if "alerts" in data:
-            config.alerts = AlertConfig(**data["alerts"])
-    
+        saved = load_domain_config_from_file(DOMAIN_CONFIG_PATH)
+        if saved and saved.zones:
+            config.zones = saved.zones
+            logger.info("Loaded %d zones from %s", len(config.zones), DOMAIN_CONFIG_PATH)
     except Exception as e:
-        raise ValueError(f"Failed to load domain configuration: {e}")
-    
+        logger.debug("No saved domain config loaded: %s", e)
+    return config
+
+
+def load_domain_config_from_file(file_path: str) -> Optional[DomainConfig]:
+    """Load domain configuration from file. Returns None if file doesn't exist."""
+    if not os.path.exists(file_path):
+        return None
+
+    config = DomainConfig()
+
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+
+    for zone_data in data.get("zones", []):
+        # Convert enum strings back to enums
+        if "zone_type" in zone_data and isinstance(zone_data["zone_type"], str):
+            zone_data["zone_type"] = ZoneType(zone_data["zone_type"])
+        if "alert_activities" in zone_data:
+            zone_data["alert_activities"] = [
+                ActivityType(a) if isinstance(a, str) else a
+                for a in zone_data["alert_activities"]
+            ]
+        zone = ZoneConfig(**zone_data)
+        config.add_zone(zone)
+
     return config
 
 
 def save_domain_config_to_file(config: DomainConfig, file_path: str):
-    """Save domain configuration to file."""
-    import json
-    
-    try:
-        with open(file_path, 'w') as f:
-            json.dump(config.to_dict(), f, indent=2)
-    except Exception as e:
-        raise ValueError(f"Failed to save domain configuration: {e}")
+    """Save zone configuration to file as a flat list of zone dicts."""
+    zones_list = []
+    for zone in config.zones.values():
+        zones_list.append({
+            "zone_id": zone.zone_id,
+            "name": zone.name,
+            "zone_type": zone.zone_type.value,
+            "description": zone.description,
+            "x_min": zone.x_min, "x_max": zone.x_max,
+            "y_min": zone.y_min, "y_max": zone.y_max,
+            "z_min": zone.z_min, "z_max": zone.z_max,
+            "enabled": zone.enabled,
+            "confidence_threshold": zone.confidence_threshold,
+            "max_persons": zone.max_persons,
+            "activity_detection": zone.activity_detection,
+            "primary_router": zone.primary_router,
+            "secondary_routers": zone.secondary_routers,
+            "calibration_data": zone.calibration_data,
+            "processing_interval": zone.processing_interval,
+            "data_retention_hours": zone.data_retention_hours,
+            "enable_alerts": zone.enable_alerts,
+            "alert_threshold": zone.alert_threshold,
+            "alert_activities": [
+                a.value if hasattr(a, 'value') else a for a in zone.alert_activities
+            ],
+        })
+
+    os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+    with open(file_path, 'w') as f:
+        json.dump({"zones": zones_list}, f, indent=2)

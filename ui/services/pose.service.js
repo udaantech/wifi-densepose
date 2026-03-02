@@ -76,6 +76,11 @@ export class PoseService {
     return apiService.get(API_CONFIG.ENDPOINTS.POSE.ZONES_SUMMARY);
   }
 
+  // Get zone configuration (room names, types, boundaries)
+  async getZonesConfig() {
+    return apiService.get(API_CONFIG.ENDPOINTS.POSE.ZONES_CONFIG);
+  }
+
   // Get historical data (requires auth)
   async getHistoricalData(request) {
     return apiService.post(API_CONFIG.ENDPOINTS.POSE.HISTORICAL, request);

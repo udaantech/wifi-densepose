@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="components/alerts-tab.css">
     <link rel="stylesheet" href="components/dashboard-tab.css">
     <link rel="stylesheet" href="components/settings-tab.css">
+    <link rel="stylesheet" href="components/liveview-tab.css">
 </head>
 <body>
     <div class="container">
@@ -23,12 +24,11 @@
             </div>
         </header>
 
-        <!-- Navigation -->
+        <!-- Navigation (5 tabs) -->
         <nav class="nav-tabs">
             <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
             <button class="nav-tab" data-tab="alerts">Alerts</button>
-            <button class="nav-tab" data-tab="demo">Live Demo</button>
-            <button class="nav-tab" data-tab="sensing">Sensing</button>
+            <button class="nav-tab" data-tab="demo">Live View</button>
             <button class="nav-tab" data-tab="calibration">Calibration</button>
             <button class="nav-tab" data-tab="settings">Settings</button>
         </nav>
@@ -36,65 +36,16 @@
         <!-- Dashboard Tab (built dynamically by DashboardTab.js) -->
         <section id="dashboard" class="tab-content active"></section>
 
-        <!-- Alerts Tab -->
+        <!-- Alerts Tab (built dynamically by AlertsTab.js) -->
         <section id="alerts" class="tab-content"></section>
 
-        <!-- Demo Tab -->
-        <section id="demo" class="tab-content">
-            <h2>Live Demonstration</h2>
-            
-            <div class="demo-controls">
-                <button id="startDemo" class="btn btn--primary">Start Stream</button>
-                <button id="stopDemo" class="btn btn--secondary" disabled>Stop Stream</button>
-                <div class="demo-status">
-                    <span class="status status--info" id="demoStatus">Ready</span>
-                </div>
-            </div>
+        <!-- Live View Tab (built dynamically by LiveDemoTab.js) -->
+        <section id="demo" class="tab-content"></section>
 
-            <div class="demo-grid">
-                <div class="signal-panel">
-                    <h3>WiFi Signal Analysis</h3>
-                    <div class="signal-display">
-                        <canvas id="signalCanvas" width="400" height="200"></canvas>
-                    </div>
-                    <div class="signal-metrics">
-                        <div class="metric">
-                            <span>Signal Strength:</span>
-                            <span id="signalStrength">-45 dBm</span>
-                        </div>
-                        <div class="metric">
-                            <span>Processing Latency:</span>
-                            <span id="latency">12 ms</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="pose-panel">
-                    <h3>Human Pose Detection</h3>
-                    <div class="pose-display">
-                        <canvas id="poseCanvas" width="400" height="300"></canvas>
-                    </div>
-                    <div class="detection-info">
-                        <div class="info-item">
-                            <span>Persons Detected:</span>
-                            <span id="personCount">0</span>
-                        </div>
-                        <div class="info-item">
-                            <span>Confidence:</span>
-                            <span id="confidence">0.0%</span>
-                        </div>
-                        <div class="info-item">
-                            <span>Keypoints:</span>
-                            <span id="keypoints">0/0</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Sensing Tab -->
-        <section id="sensing" class="tab-content"></section>
+        <!-- Calibration Tab (built dynamically by CalibrationTab.js) -->
         <section id="calibration" class="tab-content"></section>
+
+        <!-- Settings Tab (built dynamically by SettingsTab.js) -->
         <section id="settings" class="tab-content"></section>
     </div>
 

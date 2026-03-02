@@ -15,7 +15,7 @@ import numpy as np
 import torch
 
 from src.config.settings import Settings
-from src.config.domains import DomainConfig
+from src.config.domains import DomainConfig, save_domain_config_to_file, DOMAIN_CONFIG_PATH
 from src.core.csi_processor import CSIProcessor
 from src.core.phase_sanitizer import PhaseSanitizer
 from src.services.calibration_engine import CalibrationEngine, CalibrationResults
@@ -763,6 +763,13 @@ class PoseService:
             results.noise_threshold,
             results.human_detection_threshold,
         )
+
+        # Persist zone configuration to disk
+        try:
+            save_domain_config_to_file(self.domain_config, DOMAIN_CONFIG_PATH)
+            self.logger.info("Saved zone configuration to %s", DOMAIN_CONFIG_PATH)
+        except Exception as e:
+            self.logger.error("Failed to save zone configuration: %s", e)
 
     async def get_calibration_status(self):
         """Get current calibration status with detailed phase information."""

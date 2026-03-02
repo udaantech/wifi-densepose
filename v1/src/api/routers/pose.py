@@ -196,6 +196,40 @@ async def analyze_pose_data(
         )
 
 
+@router.get("/zones/config")
+async def get_zones_config(
+    pose_service: PoseService = Depends(get_pose_service),
+    current_user: Optional[Dict] = Depends(get_current_user)
+):
+    """Get configured zone metadata (room names, types, boundaries)."""
+    from src.config.domains import get_domain_config
+    domain_config = get_domain_config()
+
+    zones = []
+    for zone_id, zone in domain_config.zones.items():
+        zones.append({
+            "zone_id": zone.zone_id,
+            "name": zone.name,
+            "zone_type": zone.zone_type.value,
+            "description": zone.description,
+            "enabled": zone.enabled,
+            "boundaries": {
+                "x_min": zone.x_min, "x_max": zone.x_max,
+                "y_min": zone.y_min, "y_max": zone.y_max,
+                "z_min": zone.z_min, "z_max": zone.z_max,
+            },
+            "confidence_threshold": zone.confidence_threshold,
+            "max_persons": zone.max_persons,
+            "calibration_data": zone.calibration_data,
+        })
+
+    return {
+        "zones": zones,
+        "total": len(zones),
+        "calibrated": len(zones) > 0,
+    }
+
+
 @router.get("/zones/{zone_id}/occupancy")
 async def get_zone_occupancy(
     zone_id: str,
