@@ -132,10 +132,20 @@ async def get_current_pose_estimation(
             include_segmentation=request.include_segmentation
         )
 
-        # Evaluate alert rules against new pose data
+        # Evaluate alert rules against new pose data (per-zone)
         try:
             alert_service = get_alert_service()
-            alert_service.evaluate_pose_data(result)
+            # Group persons by zone and evaluate each zone
+            zone_persons = {}
+            for person in result.get("persons", []):
+                zid = person.get("zone_id", "unknown")
+                zone_persons.setdefault(zid, []).append(person)
+            for zid, persons in zone_persons.items():
+                alert_service.evaluate_pose_data({"zone_id": zid, "persons": persons})
+            # Also evaluate zones with 0 persons (for occupancy tracking)
+            for zid in result.get("zone_summary", {}):
+                if zid not in zone_persons:
+                    alert_service.evaluate_pose_data({"zone_id": zid, "persons": []})
         except Exception as alert_err:
             logger.debug(f"Alert evaluation error (non-fatal): {alert_err}")
 

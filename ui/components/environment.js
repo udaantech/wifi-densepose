@@ -377,7 +377,7 @@ export class Environment {
   }
 
   // Update zone occupancy display
-  // zoneOccupancy: { zone_1: count, zone_2: count, ... }
+  // zoneOccupancy: { living_room: count, bedroom: count, kitchen: count, ... }
   updateZoneOccupancy(zoneOccupancy) {
     if (!zoneOccupancy) return;
 

@@ -62,6 +62,19 @@ class AlertRule:
         return asdict(self)
 
 
+ROOM_LABELS = {
+    "living_room": "Living Room",
+    "bedroom": "Bedroom",
+    "kitchen": "Kitchen",
+    "bathroom": "Bathroom",
+    "hallway": "Hallway",
+}
+
+
+def _room_name(zone_id: str) -> str:
+    return ROOM_LABELS.get(zone_id, zone_id.replace("_", " ").title())
+
+
 class AlertService:
     """Manages alert generation, storage, and retrieval."""
 
@@ -152,7 +165,7 @@ class AlertService:
                             severity=AlertSeverity.CRITICAL,
                             zone_id=zone_id,
                             title="Fall Detected",
-                            message=f"Person {person.get('person_id', '?')} appears to have fallen in {zone_id}",
+                            message=f"Person {person.get('person_id', '?')} appears to have fallen in {_room_name(zone_id)}",
                             timestamp=datetime.utcnow().isoformat(),
                             metadata={"person_id": person.get("person_id"), "confidence": person.get("confidence")},
                         )
@@ -169,7 +182,7 @@ class AlertService:
                             severity=AlertSeverity.INFO,
                             zone_id=zone_id,
                             title="Occupancy Change",
-                            message=f"Person {direction} {zone_id} ({prev} -> {person_count})",
+                            message=f"Person {direction} {_room_name(zone_id)} ({prev} -> {person_count})",
                             timestamp=datetime.utcnow().isoformat(),
                             metadata={"previous": prev, "current": person_count},
                         )
@@ -185,7 +198,7 @@ class AlertService:
                             severity=AlertSeverity.CRITICAL,
                             zone_id=zone_id,
                             title="Intrusion Detected",
-                            message=f"{person_count} person(s) detected in {zone_id}",
+                            message=f"{person_count} person(s) detected in {_room_name(zone_id)}",
                             timestamp=datetime.utcnow().isoformat(),
                             metadata={"person_count": person_count},
                         )

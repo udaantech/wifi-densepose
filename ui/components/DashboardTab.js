@@ -1,390 +1,595 @@
-// Dashboard Tab Component
+// Dashboard Tab Component — Security-Focused Home Monitoring
 
 import { healthService } from '../services/health.service.js';
 import { poseService } from '../services/pose.service.js';
+import { alertService } from '../services/alert.service.js';
+
+const ROOM_LABELS = {
+  living_room: 'Living Room',
+  bedroom: 'Bedroom',
+  kitchen: 'Kitchen',
+  bathroom: 'Bathroom',
+  hallway: 'Hallway',
+};
 
 export class DashboardTab {
   constructor(containerElement) {
     this.container = containerElement;
-    this.statsElements = {};
     this.healthSubscription = null;
     this.statsInterval = null;
+    this._eventLog = [];
+    this._occupancyHistory = [];
+    this._maxEvents = 30;
+    this._maxHistory = 20;
+    this._prevZoneOccupancy = {};
   }
 
-  // Initialize component
   async init() {
-    this.cacheElements();
-    await this.loadInitialData();
-    this.startMonitoring();
+    this._buildDOM();
+    await this._loadInitialData();
+    this._startMonitoring();
   }
 
-  // Cache DOM elements
-  cacheElements() {
-    this.statsElements = {};
+  _buildDOM() {
+    this.container.innerHTML = `
+      <!-- Top Stats Bar -->
+      <div class="dash-stats-bar">
+        <div class="dash-stat-card">
+          <span class="dash-stat-value" id="dashPersonCount">0</span>
+          <span class="dash-stat-label">People Home</span>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-value" id="dashActiveAlerts">0</span>
+          <span class="dash-stat-label">Active Alerts</span>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-value" id="dashTotalDetections">0</span>
+          <span class="dash-stat-label">Detections (24h)</span>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-value" id="dashConfidence">0%</span>
+          <span class="dash-stat-label">Avg Confidence</span>
+        </div>
+      </div>
 
-    // Status indicators
-    this.statusElements = {
-      apiStatus: this.container.querySelector('.api-status'),
-      streamStatus: this.container.querySelector('.stream-status'),
-      hardwareStatus: this.container.querySelector('.hardware-status')
-    };
+      <!-- Main Grid -->
+      <div class="dash-grid">
+        <!-- Room Status Cards -->
+        <div class="dash-panel dash-rooms">
+          <h3>Room Status</h3>
+          <div class="room-cards" id="dashRoomCards">
+            <div class="room-empty">No zones -- run Calibration first</div>
+          </div>
+        </div>
+
+        <!-- Alert Summary -->
+        <div class="dash-panel dash-alert-summary">
+          <h3>Alert Summary</h3>
+          <div class="alert-mini-cards" id="dashAlertMini">
+            <div class="alert-mini critical"><span class="mini-count">0</span><span class="mini-label">Critical</span></div>
+            <div class="alert-mini warning"><span class="mini-count">0</span><span class="mini-label">Warning</span></div>
+            <div class="alert-mini info"><span class="mini-count">0</span><span class="mini-label">Info</span></div>
+          </div>
+          <div class="recent-alerts" id="dashRecentAlerts">
+            <div class="dash-empty">No recent alerts</div>
+          </div>
+        </div>
+
+        <!-- Activity Monitor -->
+        <div class="dash-panel dash-activity">
+          <h3>Activity Monitor</h3>
+          <div class="activity-bars" id="dashActivityBars"></div>
+          <div class="activity-current" id="dashActivityCurrent">
+            <div class="dash-empty">Waiting for data...</div>
+          </div>
+        </div>
+
+        <!-- Live Event Feed -->
+        <div class="dash-panel dash-events">
+          <h3>Live Event Feed</h3>
+          <div class="event-feed" id="dashEventFeed">
+            <div class="dash-empty">Monitoring all rooms...</div>
+          </div>
+        </div>
+
+        <!-- System Health (compact) -->
+        <div class="dash-panel dash-health">
+          <h3>System Health</h3>
+          <div class="health-items" id="dashHealthItems">
+            <div class="health-row"><span>API</span><span class="health-dot" id="healthApi"></span></div>
+            <div class="health-row"><span>Hardware</span><span class="health-dot" id="healthHw"></span></div>
+            <div class="health-row"><span>Inference</span><span class="health-dot" id="healthInf"></span></div>
+            <div class="health-row"><span>Streaming</span><span class="health-dot" id="healthStream"></span></div>
+          </div>
+          <div class="health-metrics" id="dashMetrics">
+            <div class="metric-row"><span>CPU</span><div class="mini-bar"><div class="mini-fill" id="metricCpu"></div></div><span class="metric-val" id="metricCpuVal">0%</span></div>
+            <div class="metric-row"><span>Memory</span><div class="mini-bar"><div class="mini-fill" id="metricMem"></div></div><span class="metric-val" id="metricMemVal">0%</span></div>
+          </div>
+        </div>
+
+        <!-- Occupancy Timeline -->
+        <div class="dash-panel dash-timeline">
+          <h3>Occupancy Timeline</h3>
+          <div class="timeline-chart" id="dashTimeline">
+            <div class="dash-empty">Collecting data...</div>
+          </div>
+        </div>
+
+        <!-- Historical Analytics -->
+        <div class="dash-panel dash-analytics" style="grid-column: 1 / -1;">
+          <h3>Detection Statistics (24h)</h3>
+          <div class="analytics-stats" id="dashAnalyticsStats">
+            <div class="dash-empty">Loading analytics...</div>
+          </div>
+          <div class="analytics-chart" id="dashAnalyticsChart"></div>
+        </div>
+      </div>
+    `;
   }
 
-  // Load initial data
-  async loadInitialData() {
+  async _loadInitialData() {
     try {
-      // Get API info
       const info = await healthService.getApiInfo();
-      this.updateApiInfo(info);
-
-      // Get current stats
-      const stats = await poseService.getStats(1);
-      this.updateStats(stats);
-
-    } catch (error) {
-      // DensePose API may not be running (sensing-only mode) — fail silently
-      console.log('Dashboard: DensePose API not available (sensing-only mode)');
+      this._updateApiInfo(info);
+    } catch (e) {
+      // silent
     }
   }
 
-  // Start monitoring
-  startMonitoring() {
-    // Subscribe to health updates
-    this.healthSubscription = healthService.subscribeToHealth(health => {
-      this.updateHealthStatus(health);
-    });
-
-    // Start periodic stats updates
-    this.statsInterval = setInterval(() => {
-      this.updateLiveStats();
-    }, 5000);
-
-    // Start health monitoring
+  _startMonitoring() {
+    this.healthSubscription = healthService.subscribeToHealth(h => this._updateHealth(h));
+    this.statsInterval = setInterval(() => this._updateAll(), 3000);
     healthService.startHealthMonitoring(30000);
+    this._updateAll();
   }
 
-  // Update API info display
-  updateApiInfo(info) {
-    // Update version
-    const versionElement = this.container.querySelector('.api-version');
-    if (versionElement && info.version) {
-      versionElement.textContent = `v${info.version}`;
-    }
+  async _updateAll() {
+    try {
+      const [pose, zones, stats, alertSummary, alerts, activities] = await Promise.allSettled([
+        poseService.getCurrentPose(),
+        poseService.getZonesSummary(),
+        poseService.getStats(24),
+        alertService.getSummary(),
+        alertService.getAlerts({ limit: 5 }),
+        this._fetchActivities(),
+      ]);
 
-    // Update environment
-    const envElement = this.container.querySelector('.api-environment');
-    if (envElement && info.environment) {
-      envElement.textContent = info.environment;
-      envElement.className = `api-environment env-${info.environment}`;
-    }
-
-    // Update features status
-    if (info.features) {
-      this.updateFeatures(info.features);
+      if (pose.status === 'fulfilled') this._updatePoseStats(pose.value);
+      if (zones.status === 'fulfilled') this._updateRoomCards(zones.value);
+      if (stats.status === 'fulfilled') this._updateAnalytics(stats.value);
+      if (alertSummary.status === 'fulfilled') this._updateAlertSummary(alertSummary.value);
+      if (alerts.status === 'fulfilled') this._updateRecentAlerts(alerts.value?.alerts || []);
+      if (activities.status === 'fulfilled') this._updateActivityMonitor(activities.value);
+      this._trackOccupancy(zones.status === 'fulfilled' ? zones.value : null);
+    } catch (e) {
+      // silent
     }
   }
 
-  // Update features display
-  updateFeatures(features) {
-    const featuresContainer = this.container.querySelector('.features-status');
-    if (!featuresContainer) return;
-
-    featuresContainer.innerHTML = '';
-    
-    Object.entries(features).forEach(([feature, enabled]) => {
-      const featureElement = document.createElement('div');
-      featureElement.className = `feature-item ${enabled ? 'enabled' : 'disabled'}`;
-      
-      // Use textContent instead of innerHTML to prevent XSS
-      const featureNameSpan = document.createElement('span');
-      featureNameSpan.className = 'feature-name';
-      featureNameSpan.textContent = this.formatFeatureName(feature);
-      
-      const featureStatusSpan = document.createElement('span');
-      featureStatusSpan.className = 'feature-status';
-      featureStatusSpan.textContent = enabled ? '✓' : '✗';
-      
-      featureElement.appendChild(featureNameSpan);
-      featureElement.appendChild(featureStatusSpan);
-      featuresContainer.appendChild(featureElement);
-    });
+  async _fetchActivities() {
+    try {
+      return await poseService.getActivities();
+    } catch (e) { /* silent */ }
+    return { activities: [] };
   }
 
-  // Update health status
-  updateHealthStatus(health) {
+  // --- Top Stats ---
+  _updatePoseStats(data) {
+    if (!data) return;
+    const count = data.persons ? data.persons.length : 0;
+    this._setText('dashPersonCount', count);
+
+    if (data.persons && data.persons.length > 0) {
+      const avg = data.persons.reduce((s, p) => s + (p.confidence || 0), 0) / data.persons.length;
+      this._setText('dashConfidence', (avg * 100).toFixed(0) + '%');
+    }
+
+    // Generate events from person zone changes
+    if (data.persons) {
+      for (const p of data.persons) {
+        const zid = p.zone_id || 'unknown';
+        const activity = p.activity || 'unknown';
+        this._addEvent(zid, `Person ${p.person_id || '?'}: ${activity}`, activity);
+      }
+    }
+  }
+
+  _updateAnalytics(data) {
+    const stats = data?.statistics || data || {};
+    if (stats.total_detections !== undefined) {
+      this._setText('dashTotalDetections', this._formatNumber(stats.total_detections));
+    }
+
+    const container = this.container.querySelector('#dashAnalyticsStats');
+    if (!container) return;
+
+    const total = stats.total_detections || 0;
+    const successful = stats.successful_detections || total;
+    const failed = stats.failed_detections || 0;
+    const avgConf = stats.average_confidence || 0;
+    const avgProc = stats.average_processing_time_ms || stats.avg_processing_time || 0;
+    const peakPersons = stats.peak_persons || stats.max_persons_detected || 0;
+    const successRate = total > 0 ? ((successful / total) * 100).toFixed(1) : '100.0';
+
+    container.innerHTML = `
+      <div class="analytics-row">
+        <div class="analytics-item">
+          <span class="analytics-val">${this._formatNumber(total)}</span>
+          <span class="analytics-label">Total Detections</span>
+        </div>
+        <div class="analytics-item">
+          <span class="analytics-val">${successRate}%</span>
+          <span class="analytics-label">Success Rate</span>
+        </div>
+        <div class="analytics-item">
+          <span class="analytics-val">${(avgConf * 100).toFixed(0)}%</span>
+          <span class="analytics-label">Avg Confidence</span>
+        </div>
+        <div class="analytics-item">
+          <span class="analytics-val">${avgProc.toFixed(1)}ms</span>
+          <span class="analytics-label">Avg Processing</span>
+        </div>
+        <div class="analytics-item">
+          <span class="analytics-val">${peakPersons}</span>
+          <span class="analytics-label">Peak Persons</span>
+        </div>
+        <div class="analytics-item">
+          <span class="analytics-val ${failed > 0 ? 'danger' : ''}">${this._formatNumber(failed)}</span>
+          <span class="analytics-label">Failed Detections</span>
+        </div>
+      </div>
+    `;
+
+    // Render a simple bar chart of success vs failed
+    const chart = this.container.querySelector('#dashAnalyticsChart');
+    if (chart && total > 0) {
+      const successPct = (successful / total * 100).toFixed(1);
+      const failPct = (failed / total * 100).toFixed(1);
+      chart.innerHTML = `
+        <div class="analytics-bar-chart">
+          <div class="analytics-bar-label">Detection Rate</div>
+          <div class="analytics-bar-track">
+            <div class="analytics-bar-fill success" style="width:${successPct}%" title="Successful: ${successPct}%"></div>
+            ${failed > 0 ? `<div class="analytics-bar-fill fail" style="width:${failPct}%" title="Failed: ${failPct}%"></div>` : ''}
+          </div>
+          <div class="analytics-bar-legend">
+            <span class="legend-item"><span class="legend-dot success"></span> Successful ${successPct}%</span>
+            ${failed > 0 ? `<span class="legend-item"><span class="legend-dot fail"></span> Failed ${failPct}%</span>` : ''}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // --- Room Cards ---
+  _updateRoomCards(zonesSummary) {
+    const container = this.container.querySelector('#dashRoomCards');
+    if (!container) return;
+
+    let zones = {};
+    if (zonesSummary?.zones) zones = zonesSummary.zones;
+    else if (zonesSummary && typeof zonesSummary === 'object') zones = zonesSummary;
+
+    if (Object.keys(zones).length === 0) {
+      container.innerHTML = '<div class="room-empty">No zones -- run Calibration first</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+    for (const [zoneId, data] of Object.entries(zones)) {
+      const count = typeof data === 'object' ? (data.occupancy || data.person_count || data.count || 0) : data;
+      const card = document.createElement('div');
+      card.className = `room-card ${count > 0 ? 'occupied' : 'empty'}`;
+
+      const name = document.createElement('div');
+      name.className = 'room-card-name';
+      name.textContent = ROOM_LABELS[zoneId] || zoneId;
+
+      const status = document.createElement('div');
+      status.className = 'room-card-status';
+      status.textContent = count > 0 ? `${count} person${count > 1 ? 's' : ''}` : 'Empty';
+
+      const dot = document.createElement('div');
+      dot.className = `room-card-dot ${count > 0 ? 'active' : ''}`;
+
+      card.appendChild(dot);
+      card.appendChild(name);
+      card.appendChild(status);
+      container.appendChild(card);
+    }
+  }
+
+  // --- Alert Summary ---
+  _updateAlertSummary(summary) {
+    if (!summary) return;
+    this._setText('dashActiveAlerts', summary.unacknowledged || 0);
+
+    const cards = this.container.querySelectorAll('.alert-mini');
+    if (cards[0]) cards[0].querySelector('.mini-count').textContent = summary.by_severity?.critical || 0;
+    if (cards[1]) cards[1].querySelector('.mini-count').textContent = summary.by_severity?.warning || 0;
+    if (cards[2]) cards[2].querySelector('.mini-count').textContent = summary.by_severity?.info || 0;
+  }
+
+  _updateRecentAlerts(alerts) {
+    const container = this.container.querySelector('#dashRecentAlerts');
+    if (!container) return;
+
+    if (!alerts.length) {
+      container.innerHTML = '<div class="dash-empty">No recent alerts</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+    for (const alert of alerts.slice(0, 5)) {
+      const el = document.createElement('div');
+      el.className = `recent-alert-item severity-${alert.severity}`;
+
+      const badge = document.createElement('span');
+      badge.className = `alert-badge severity-${alert.severity}`;
+      badge.textContent = alert.severity.charAt(0).toUpperCase();
+
+      const msg = document.createElement('span');
+      msg.className = 'recent-alert-msg';
+      msg.textContent = alert.title + ' - ' + (ROOM_LABELS[alert.zone_id] || alert.zone_id);
+
+      const time = document.createElement('span');
+      time.className = 'recent-alert-time';
+      time.textContent = new Date(alert.timestamp).toLocaleTimeString();
+
+      el.appendChild(badge);
+      el.appendChild(msg);
+      el.appendChild(time);
+      container.appendChild(el);
+    }
+  }
+
+  // --- Activity Monitor ---
+  _updateActivityMonitor(data) {
+    const activities = data?.activities || [];
+    const barsContainer = this.container.querySelector('#dashActivityBars');
+    const currentContainer = this.container.querySelector('#dashActivityCurrent');
+    if (!barsContainer || !currentContainer) return;
+
+    // Count activities
+    const counts = {};
+    for (const a of activities) {
+      counts[a.activity] = (counts[a.activity] || 0) + 1;
+    }
+
+    const total = activities.length || 1;
+    const types = ['standing', 'sitting', 'walking', 'lying', 'running', 'falling'];
+    const colors = { standing: '#21808d', sitting: '#5e9ca0', walking: '#3da35d', lying: '#6c757d', running: '#e6a817', falling: '#c0152f' };
+
+    barsContainer.innerHTML = '';
+    for (const t of types) {
+      const pct = ((counts[t] || 0) / total * 100).toFixed(0);
+      if (pct == 0) continue;
+
+      const row = document.createElement('div');
+      row.className = 'activity-bar-row';
+
+      const label = document.createElement('span');
+      label.className = 'activity-label';
+      label.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+
+      const bar = document.createElement('div');
+      bar.className = 'activity-bar';
+
+      const fill = document.createElement('div');
+      fill.className = 'activity-fill';
+      fill.style.width = pct + '%';
+      fill.style.background = colors[t] || '#999';
+
+      const val = document.createElement('span');
+      val.className = 'activity-val';
+      val.textContent = pct + '%';
+
+      bar.appendChild(fill);
+      row.appendChild(label);
+      row.appendChild(bar);
+      row.appendChild(val);
+      barsContainer.appendChild(row);
+    }
+
+    // Current activities per person
+    currentContainer.innerHTML = '';
+    const recent = activities.slice(0, 5);
+    if (!recent.length) {
+      currentContainer.innerHTML = '<div class="dash-empty">No recent activity</div>';
+      return;
+    }
+    for (const a of recent) {
+      const el = document.createElement('div');
+      el.className = 'activity-current-item';
+
+      const who = document.createElement('span');
+      who.className = 'activity-who';
+      who.textContent = ROOM_LABELS[a.zone_id] || a.zone_id;
+
+      const what = document.createElement('span');
+      what.className = `activity-what ${a.activity === 'falling' ? 'danger' : ''}`;
+      what.textContent = a.activity;
+
+      const conf = document.createElement('span');
+      conf.className = 'activity-conf';
+      conf.textContent = ((a.confidence || 0) * 100).toFixed(0) + '%';
+
+      el.appendChild(who);
+      el.appendChild(what);
+      el.appendChild(conf);
+      currentContainer.appendChild(el);
+    }
+  }
+
+  // --- Live Event Feed ---
+  _addEvent(zoneId, message, activity) {
+    const event = {
+      time: new Date().toLocaleTimeString(),
+      zone: ROOM_LABELS[zoneId] || zoneId,
+      message,
+      activity,
+    };
+    this._eventLog.unshift(event);
+    if (this._eventLog.length > this._maxEvents) this._eventLog.pop();
+    this._renderEvents();
+  }
+
+  _renderEvents() {
+    const feed = this.container.querySelector('#dashEventFeed');
+    if (!feed) return;
+
+    feed.innerHTML = '';
+    for (const ev of this._eventLog.slice(0, 10)) {
+      const el = document.createElement('div');
+      el.className = 'event-item';
+
+      const time = document.createElement('span');
+      time.className = 'event-time';
+      time.textContent = ev.time;
+
+      const zone = document.createElement('span');
+      zone.className = 'event-zone';
+      zone.textContent = ev.zone;
+
+      const msg = document.createElement('span');
+      msg.className = `event-msg ${ev.activity === 'falling' ? 'danger' : ''}`;
+      msg.textContent = ev.message;
+
+      el.appendChild(time);
+      el.appendChild(zone);
+      el.appendChild(msg);
+      feed.appendChild(el);
+    }
+  }
+
+  // --- Occupancy Timeline ---
+  _trackOccupancy(zonesSummary) {
+    let zones = {};
+    if (zonesSummary?.zones) zones = zonesSummary.zones;
+    else if (zonesSummary && typeof zonesSummary === 'object') zones = zonesSummary;
+
+    const entry = { time: new Date().toLocaleTimeString().slice(0, 5), zones: {} };
+    for (const [zid, data] of Object.entries(zones)) {
+      entry.zones[zid] = typeof data === 'object' ? (data.occupancy || data.person_count || 0) : data;
+    }
+    this._occupancyHistory.push(entry);
+    if (this._occupancyHistory.length > this._maxHistory) this._occupancyHistory.shift();
+    this._renderTimeline();
+  }
+
+  _renderTimeline() {
+    const container = this.container.querySelector('#dashTimeline');
+    if (!container || this._occupancyHistory.length < 2) return;
+
+    container.innerHTML = '';
+    const table = document.createElement('div');
+    table.className = 'timeline-table';
+
+    // Header
+    const headerRow = document.createElement('div');
+    headerRow.className = 'timeline-row timeline-header';
+    const timeLabel = document.createElement('span');
+    timeLabel.textContent = 'Time';
+    headerRow.appendChild(timeLabel);
+
+    const allZones = new Set();
+    this._occupancyHistory.forEach(e => Object.keys(e.zones).forEach(z => allZones.add(z)));
+    for (const z of allZones) {
+      const zh = document.createElement('span');
+      zh.textContent = ROOM_LABELS[z] || z;
+      headerRow.appendChild(zh);
+    }
+    table.appendChild(headerRow);
+
+    // Data rows (most recent first)
+    const rows = [...this._occupancyHistory].reverse().slice(0, 10);
+    for (const entry of rows) {
+      const row = document.createElement('div');
+      row.className = 'timeline-row';
+
+      const t = document.createElement('span');
+      t.className = 'timeline-time';
+      t.textContent = entry.time;
+      row.appendChild(t);
+
+      for (const z of allZones) {
+        const cell = document.createElement('span');
+        const val = entry.zones[z] || 0;
+        cell.className = `timeline-cell ${val > 0 ? 'occupied' : ''}`;
+        cell.textContent = val;
+        row.appendChild(cell);
+      }
+      table.appendChild(row);
+    }
+
+    container.appendChild(table);
+  }
+
+  // --- Health ---
+  _updateHealth(health) {
     if (!health) return;
 
-    // Update overall status
-    const overallStatus = this.container.querySelector('.overall-health');
+    const overallStatus = document.querySelector('.overall-health');
     if (overallStatus) {
       overallStatus.className = `overall-health status-${health.status}`;
       overallStatus.textContent = health.status.toUpperCase();
     }
 
-    // Update component statuses
     if (health.components) {
-      Object.entries(health.components).forEach(([component, status]) => {
-        this.updateComponentStatus(component, status);
-      });
-    }
-
-    // Update metrics
-    if (health.metrics) {
-      this.updateSystemMetrics(health.metrics);
-    }
-  }
-
-  // Update component status
-  updateComponentStatus(component, status) {
-    // Map backend component names to UI component names
-    const componentMap = {
-      'pose': 'inference',
-      'stream': 'streaming',
-      'hardware': 'hardware'
-    };
-    
-    const uiComponent = componentMap[component] || component;
-    const element = this.container.querySelector(`[data-component="${uiComponent}"]`);
-    
-    if (element) {
-      element.className = `component-status status-${status.status}`;
-      const statusText = element.querySelector('.status-text');
-      const statusMessage = element.querySelector('.status-message');
-      
-      if (statusText) {
-        statusText.textContent = status.status.toUpperCase();
-      }
-      
-      if (statusMessage && status.message) {
-        statusMessage.textContent = status.message;
-      }
-    }
-    
-    // Also update API status based on overall health
-    if (component === 'hardware') {
-      const apiElement = this.container.querySelector(`[data-component="api"]`);
-      if (apiElement) {
-        apiElement.className = `component-status status-healthy`;
-        const apiStatusText = apiElement.querySelector('.status-text');
-        const apiStatusMessage = apiElement.querySelector('.status-message');
-        
-        if (apiStatusText) {
-          apiStatusText.textContent = 'HEALTHY';
-        }
-        
-        if (apiStatusMessage) {
-          apiStatusMessage.textContent = 'API server is running normally';
+      const map = { pose: 'healthInf', stream: 'healthStream', hardware: 'healthHw' };
+      for (const [comp, status] of Object.entries(health.components)) {
+        const id = map[comp];
+        if (id) {
+          const dot = this.container.querySelector('#' + id);
+          if (dot) dot.className = `health-dot ${status.status}`;
         }
       }
+      // API dot
+      const apiDot = this.container.querySelector('#healthApi');
+      if (apiDot) apiDot.className = 'health-dot healthy';
+    }
+
+    if (health.metrics) this._updateMetrics(health.metrics);
+  }
+
+  _updateMetrics(metrics) {
+    const sys = metrics.system_metrics || metrics;
+    const cpu = sys.cpu?.percent || sys.cpu_percent || 0;
+    const mem = sys.memory?.percent || sys.memory_percent || 0;
+
+    const cpuFill = this.container.querySelector('#metricCpu');
+    const memFill = this.container.querySelector('#metricMem');
+    if (cpuFill) cpuFill.style.width = cpu.toFixed(0) + '%';
+    if (memFill) memFill.style.width = mem.toFixed(0) + '%';
+    this._setText('metricCpuVal', cpu.toFixed(0) + '%');
+    this._setText('metricMemVal', mem.toFixed(0) + '%');
+  }
+
+  _updateApiInfo(info) {
+    const versionEl = document.querySelector('.api-version');
+    if (versionEl && info.version) versionEl.textContent = `v${info.version}`;
+    const envEl = document.querySelector('.api-environment');
+    if (envEl && info.environment) {
+      envEl.textContent = info.environment;
+      envEl.className = `api-environment env-${info.environment}`;
     }
   }
 
-  // Update system metrics
-  updateSystemMetrics(metrics) {
-    // Handle both flat and nested metric structures
-    // Backend returns system_metrics.cpu.percent, mock returns metrics.cpu.percent
-    const systemMetrics = metrics.system_metrics || metrics;
-    const cpuPercent = systemMetrics.cpu?.percent || systemMetrics.cpu_percent;
-    const memoryPercent = systemMetrics.memory?.percent || systemMetrics.memory_percent;
-    const diskPercent = systemMetrics.disk?.percent || systemMetrics.disk_percent;
-
-    // CPU usage
-    const cpuElement = this.container.querySelector('.cpu-usage');
-    if (cpuElement && cpuPercent !== undefined) {
-      cpuElement.textContent = `${cpuPercent.toFixed(1)}%`;
-      this.updateProgressBar('cpu', cpuPercent);
-    }
-
-    // Memory usage
-    const memoryElement = this.container.querySelector('.memory-usage');
-    if (memoryElement && memoryPercent !== undefined) {
-      memoryElement.textContent = `${memoryPercent.toFixed(1)}%`;
-      this.updateProgressBar('memory', memoryPercent);
-    }
-
-    // Disk usage
-    const diskElement = this.container.querySelector('.disk-usage');
-    if (diskElement && diskPercent !== undefined) {
-      diskElement.textContent = `${diskPercent.toFixed(1)}%`;
-      this.updateProgressBar('disk', diskPercent);
-    }
+  // --- Helpers ---
+  _setText(id, value) {
+    const el = this.container.querySelector('#' + id);
+    if (el) el.textContent = String(value);
   }
 
-  // Update progress bar
-  updateProgressBar(type, percent) {
-    const progressBar = this.container.querySelector(`.progress-bar[data-type="${type}"]`);
-    if (progressBar) {
-      const fill = progressBar.querySelector('.progress-fill');
-      if (fill) {
-        fill.style.width = `${percent}%`;
-        fill.className = `progress-fill ${this.getProgressClass(percent)}`;
-      }
-    }
-  }
-
-  // Get progress class based on percentage
-  getProgressClass(percent) {
-    if (percent >= 90) return 'critical';
-    if (percent >= 75) return 'warning';
-    return 'normal';
-  }
-
-  // Update live statistics
-  async updateLiveStats() {
-    try {
-      // Get current pose data
-      const currentPose = await poseService.getCurrentPose();
-      this.updatePoseStats(currentPose);
-
-      // Get zones summary
-      const zonesSummary = await poseService.getZonesSummary();
-      this.updateZonesDisplay(zonesSummary);
-
-      // Get stats for total detections
-      const stats = await poseService.getStats(24);
-      if (stats && stats.statistics) {
-        this.updateStats(stats.statistics);
-      }
-
-    } catch (error) {
-      console.error('Failed to update live stats:', error);
-    }
-  }
-
-  // Update pose statistics
-  updatePoseStats(poseData) {
-    if (!poseData) return;
-
-    // Update person count
-    const personCount = this.container.querySelector('.person-count');
-    if (personCount) {
-      const count = poseData.persons ? poseData.persons.length : (poseData.total_persons || 0);
-      personCount.textContent = count;
-    }
-
-    // Update average confidence
-    const avgConfidence = this.container.querySelector('.avg-confidence');
-    if (avgConfidence && poseData.persons && poseData.persons.length > 0) {
-      const confidences = poseData.persons.map(p => p.confidence);
-      const avg = confidences.length > 0
-        ? (confidences.reduce((a, b) => a + b, 0) / confidences.length * 100).toFixed(1)
-        : 0;
-      avgConfidence.textContent = `${avg}%`;
-    } else if (avgConfidence) {
-      avgConfidence.textContent = '0%';
-    }
-
-    // Update total detections from stats if available
-    const detectionCount = this.container.querySelector('.detection-count');
-    if (detectionCount && poseData.total_detections !== undefined) {
-      detectionCount.textContent = this.formatNumber(poseData.total_detections);
-    }
-  }
-
-  // Update zones display
-  updateZonesDisplay(zonesSummary) {
-    const zonesContainer = this.container.querySelector('.zones-summary');
-    if (!zonesContainer) return;
-
-    zonesContainer.innerHTML = '';
-    
-    // Handle different zone summary formats
-    let zones = {};
-    if (zonesSummary && zonesSummary.zones) {
-      zones = zonesSummary.zones;
-    } else if (zonesSummary && typeof zonesSummary === 'object') {
-      zones = zonesSummary;
-    }
-    
-    // If no zones data, show prompt to run calibration
-    if (Object.keys(zones).length === 0) {
-      const notice = document.createElement('div');
-      notice.className = 'zone-item';
-      notice.style.opacity = '0.6';
-      notice.style.fontStyle = 'italic';
-      notice.textContent = 'No zones \u2014 run Calibration first';
-      zonesContainer.appendChild(notice);
-      return;
-    }
-    
-    Object.entries(zones).forEach(([zoneId, data]) => {
-      const zoneElement = document.createElement('div');
-      zoneElement.className = 'zone-item';
-      const count = typeof data === 'object' ? (data.occupancy || data.person_count || data.count || 0) : data;
-      
-      // Use textContent instead of innerHTML to prevent XSS
-      const zoneNameSpan = document.createElement('span');
-      zoneNameSpan.className = 'zone-name';
-      zoneNameSpan.textContent = zoneId;
-      
-      const zoneCountSpan = document.createElement('span');
-      zoneCountSpan.className = 'zone-count';
-      zoneCountSpan.textContent = String(count);
-      
-      zoneElement.appendChild(zoneNameSpan);
-      zoneElement.appendChild(zoneCountSpan);
-      zonesContainer.appendChild(zoneElement);
-    });
-  }
-
-  // Update statistics
-  updateStats(stats) {
-    if (!stats) return;
-
-    // Update detection count
-    const detectionCount = this.container.querySelector('.detection-count');
-    if (detectionCount && stats.total_detections !== undefined) {
-      detectionCount.textContent = this.formatNumber(stats.total_detections);
-    }
-
-    // Update accuracy if available
-    if (this.statsElements.accuracy && stats.average_confidence !== undefined) {
-      this.statsElements.accuracy.textContent = `${(stats.average_confidence * 100).toFixed(1)}%`;
-    }
-  }
-
-  // Format feature name
-  formatFeatureName(name) {
-    return name.replace(/_/g, ' ')
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
-
-  // Format large numbers
-  formatNumber(num) {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`;
-    }
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
-    }
+  _formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
   }
 
-  // Show error message
-  showError(message) {
-    const errorContainer = this.container.querySelector('.error-container');
-    if (errorContainer) {
-      errorContainer.textContent = message;
-      errorContainer.style.display = 'block';
-      
-      setTimeout(() => {
-        errorContainer.style.display = 'none';
-      }, 5000);
-    }
-  }
-
-  // Clean up
   dispose() {
-    if (this.healthSubscription) {
-      this.healthSubscription();
-    }
-    
-    if (this.statsInterval) {
-      clearInterval(this.statsInterval);
-    }
-    
+    if (this.healthSubscription) this.healthSubscription();
+    if (this.statsInterval) clearInterval(this.statsInterval);
     healthService.stopHealthMonitoring();
   }
 }

@@ -9,15 +9,14 @@ class AlertService {
   }
 
   async getAlerts(params = {}) {
-    const query = new URLSearchParams();
-    if (params.limit) query.set('limit', params.limit);
-    if (params.offset) query.set('offset', params.offset);
-    if (params.severity) query.set('severity', params.severity);
-    if (params.alert_type) query.set('alert_type', params.alert_type);
-    if (params.zone_id) query.set('zone_id', params.zone_id);
-    if (params.acknowledged !== undefined) query.set('acknowledged', params.acknowledged);
-    const qs = query.toString();
-    return apiService.get(`/api/v1/alerts/${qs ? '?' + qs : ''}`);
+    const query = {};
+    if (params.limit) query.limit = params.limit;
+    if (params.offset) query.offset = params.offset;
+    if (params.severity) query.severity = params.severity;
+    if (params.alert_type) query.alert_type = params.alert_type;
+    if (params.zone_id) query.zone_id = params.zone_id;
+    if (params.acknowledged !== undefined && params.acknowledged !== null) query.acknowledged = params.acknowledged;
+    return apiService.get('/api/v1/alerts/', query);
   }
 
   async getSummary() {
@@ -42,6 +41,10 @@ class AlertService {
 
   async updateRule(ruleId, updates) {
     return apiService.put(`/api/v1/alerts/rules/${ruleId}`, updates);
+  }
+
+  async evaluate(poseData) {
+    return apiService.post('/api/v1/alerts/evaluate', poseData);
   }
 
   startPolling(intervalMs = 5000) {

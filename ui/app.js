@@ -6,6 +6,7 @@ import { LiveDemoTab } from './components/LiveDemoTab.js';
 import { SensingTab } from './components/SensingTab.js';
 import { CalibrationTab } from './components/CalibrationTab.js';
 import { AlertsTab } from './components/AlertsTab.js';
+import { SettingsTab } from './components/SettingsTab.js';
 import { apiService } from './services/api.service.js';
 import { wsService } from './services/websocket.service.js';
 import { healthService } from './services/health.service.js';
@@ -136,6 +137,13 @@ class WiFiDensePoseApp {
     if (calibrationContainer) {
       this.components.calibration = new CalibrationTab(calibrationContainer);
       this.components.calibration.init();
+    }
+
+    // Settings tab
+    const settingsContainer = document.getElementById('settings');
+    if (settingsContainer) {
+      this.components.settings = new SettingsTab(settingsContainer);
+      this.components.settings.init();
     }
 
   }

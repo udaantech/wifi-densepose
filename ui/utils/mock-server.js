@@ -171,6 +171,113 @@ export class MockServer {
 
     this.addEndpoint('POST', '/api/v1/alerts/acknowledge-all', () => ({ acknowledged: 3 }));
     this.addEndpoint('DELETE', '/api/v1/alerts/clear', () => ({ cleared: 5 }));
+
+    // Pose activities endpoint
+    this.addEndpoint('GET', '/api/v1/pose/activities', () => ({
+      activities: this.generateMockActivities(),
+      total_count: 10,
+      zone_id: null
+    }));
+
+    // Zone occupancy detail endpoint (matches /api/v1/pose/zones/*/occupancy)
+    this.addDynamicEndpoint('GET', /^\/api\/v1\/pose\/zones\/([^/]+)\/occupancy$/, (match) => {
+      const zoneId = match[1];
+      const count = Math.floor(Math.random() * 3);
+      const persons = [];
+      const activities = ['standing', 'sitting', 'walking', 'lying'];
+      for (let i = 0; i < count; i++) {
+        persons.push({
+          person_id: `person_${i}`,
+          confidence: Math.random() * 0.3 + 0.7,
+          activity: activities[Math.floor(Math.random() * activities.length)],
+          zone_id: zoneId
+        });
+      }
+      return {
+        zone_id: zoneId,
+        current_occupancy: count,
+        max_occupancy: 5,
+        persons,
+        timestamp: new Date().toISOString()
+      };
+    });
+
+    // System metrics endpoint
+    this.addEndpoint('GET', '/health/metrics', () => ({
+      cpu: { percent: Math.random() * 30 + 10, count: 8 },
+      memory: { percent: Math.random() * 40 + 20, total: 17179869184, used: 8589934592, available: 8589934592 },
+      disk: { percent: Math.random() * 30 + 15, total: 500107862016, used: 125026965504, free: 375080896512 },
+      network: { bytes_sent: Math.floor(Math.random() * 1e9), bytes_recv: Math.floor(Math.random() * 2e9), packets_sent: Math.floor(Math.random() * 1e6), packets_recv: Math.floor(Math.random() * 2e6) },
+      load_average: { '1min': Math.random() * 2, '5min': Math.random() * 1.5, '15min': Math.random() * 1 },
+      process: { pid: 12345, cpu_percent: Math.random() * 10, memory_mb: Math.random() * 200 + 50, threads: Math.floor(Math.random() * 20) + 4 }
+    }));
+
+    // Stream clients endpoint
+    this.addEndpoint('GET', '/api/v1/stream/clients', () => ({
+      clients: [
+        { client_id: 'client-001', stream_type: 'pose', connected_at: new Date(Date.now() - 300000).toISOString(), zone_ids: ['living_room'] },
+        { client_id: 'client-002', stream_type: 'events', connected_at: new Date(Date.now() - 120000).toISOString(), zone_ids: [] }
+      ]
+    }));
+
+    // Stream metrics
+    this.addEndpoint('GET', '/api/v1/stream/metrics', () => ({
+      total_messages: Math.floor(Math.random() * 50000),
+      average_latency_ms: Math.random() * 15 + 3,
+      active_connections: 2,
+      buffer_size: Math.floor(Math.random() * 100)
+    }));
+
+    // Alert evaluate endpoint
+    this.addEndpoint('POST', '/api/v1/alerts/evaluate', () => ({
+      alerts_triggered: Math.random() > 0.5 ? [
+        { id: 'test_alert_1', type: 'intrusion', severity: 'warning', message: 'Test alert triggered' }
+      ] : [],
+      rules_evaluated: 4
+    }));
+
+    // Stats with full statistics object
+    this.addEndpoint('GET', '/api/v1/pose/stats', () => ({
+      period: {
+        start_time: new Date(Date.now() - 86400000).toISOString(),
+        end_time: new Date().toISOString(),
+        hours: 24
+      },
+      statistics: {
+        total_detections: Math.floor(Math.random() * 5000) + 1000,
+        successful_detections: Math.floor(Math.random() * 4500) + 900,
+        failed_detections: Math.floor(Math.random() * 50),
+        average_confidence: Math.random() * 0.2 + 0.75,
+        average_processing_time_ms: Math.random() * 15 + 5,
+        peak_persons: Math.floor(Math.random() * 5) + 1,
+        max_persons_detected: Math.floor(Math.random() * 5) + 1
+      }
+    }));
+  }
+
+  // Generate mock activities
+  generateMockActivities() {
+    const zones = ['living_room', 'bedroom', 'kitchen', 'bathroom', 'hallway'];
+    const activities = ['standing', 'sitting', 'walking', 'lying', 'running', 'falling'];
+    const weights = [0.3, 0.25, 0.2, 0.1, 0.1, 0.05]; // weighted distribution
+    const result = [];
+    for (let i = 0; i < 10; i++) {
+      const r = Math.random();
+      let cumulative = 0;
+      let activity = activities[0];
+      for (let j = 0; j < weights.length; j++) {
+        cumulative += weights[j];
+        if (r < cumulative) { activity = activities[j]; break; }
+      }
+      result.push({
+        person_id: `person_${i % 4}`,
+        zone_id: zones[Math.floor(Math.random() * zones.length)],
+        activity,
+        confidence: Math.random() * 0.3 + 0.7,
+        timestamp: new Date(Date.now() - i * 60000).toISOString()
+      });
+    }
+    return result;
   }
 
   // Generate mock alerts
@@ -269,6 +376,24 @@ export class MockServer {
     this.endpoints.set(key, handler);
   }
 
+  // Add a dynamic endpoint with regex pattern
+  addDynamicEndpoint(method, pattern, handler) {
+    if (!this.dynamicEndpoints) this.dynamicEndpoints = [];
+    this.dynamicEndpoints.push({ method: method.toUpperCase(), pattern, handler });
+  }
+
+  // Match dynamic endpoints
+  _matchDynamic(method, path) {
+    if (!this.dynamicEndpoints) return null;
+    for (const ep of this.dynamicEndpoints) {
+      if (ep.method === method) {
+        const match = path.match(ep.pattern);
+        if (match) return { handler: ep.handler, match };
+      }
+    }
+    return null;
+  }
+
   // Start the mock server
   start() {
     if (this.isRunning) return;
@@ -302,14 +427,27 @@ export class MockServer {
       const path = new URL(url, window.location.origin).pathname;
       const key = `${method.toUpperCase()} ${path}`;
       
+      let handler = null;
+      let handlerArg = options;
+
       if (this.endpoints.has(key)) {
-        const handler = this.endpoints.get(key);
+        handler = this.endpoints.get(key);
+      } else {
+        // Check dynamic endpoints
+        const dynMatch = this._matchDynamic(method.toUpperCase(), path);
+        if (dynMatch) {
+          handler = dynMatch.handler;
+          handlerArg = dynMatch.match;
+        }
+      }
+
+      if (handler) {
         const delay = Math.random() * 100 + 50; // Simulate network delay
-        
+
         await new Promise(resolve => setTimeout(resolve, delay));
-        
+
         try {
-          const data = handler(options);
+          const data = handler(handlerArg);
           return new Response(JSON.stringify(data), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
@@ -321,7 +459,7 @@ export class MockServer {
           });
         }
       }
-      
+
       // If no mock endpoint, fall back to original fetch
       return this.originalFetch(url, options);
     };
